@@ -1,0 +1,8 @@
+supervisor
+python-telegram-bot
+sqlalchemy
+alembic
+requests
+tmdbv3api
+apscheduler
+pytz
