@@ -10,6 +10,7 @@ class QuarkAutoDownloadConfig(Base, CreateTimeUpdateTimeBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     api_token = Column(String(256), nullable=False)
     save_path_prefix = Column(String(256), nullable=False, default='/', server_default='/')
+    movie_save_path_prefix = Column(String(256), nullable=False, default='/', server_default='/')
     user_id = Column(Integer, ForeignKey('user.id'), nullable=False, unique=True)
     user = relationship(User)
     host = Column(String(256), nullable=False)
