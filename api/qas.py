@@ -242,7 +242,7 @@ async def qas_add_task_select_resource_type(update: Update, context: ContextType
     query = update.callback_query
     await query.answer()
     url_id = query.data.split(":")[1]
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         text="请选择资源类型",
         reply_markup=InlineKeyboardMarkup([
             [
@@ -355,7 +355,7 @@ async def qas_add_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE,
         context.user_data['qas_add_task'].update({
             'savepath': os.path.join(qas_config.movie_save_path_prefix, context.user_data['qas_add_task']['resource_name'])
         })
-        context.user_data['qas_add_task']['pattern'] = '*.(mp4|mkv|iso|ass|srt)'
+        context.user_data['qas_add_task']['pattern'] = '.*.(mp4|mkv|iso|ass|srt)'
         context.user_data['qas_add_task']['replace'] = f'{context.user_data['qas_add_task']['resource_name']}.{{EXT}}'
         return await qas_add_task_pattern_ask_aria2(update, context, session, user)
     return None

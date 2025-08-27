@@ -56,8 +56,8 @@ class TheMovieDB:
             poster_path = detail.get('poster_path')
             photo_url = f"{self.poster_base_url}{poster_path}"
             results.append({
-                'name': detail.get('name'),
-                'first_air_date': detail.get('first_air_date'),
+                'name': detail.get('title'),
+                'first_air_date': detail.get('release_date'),
                 'photo_url': photo_url,
             })
         return results
