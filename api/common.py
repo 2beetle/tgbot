@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import uuid
 
 import pytz
@@ -14,6 +15,8 @@ from db.models.user import User
 from utils.ai import openapi_chat
 from utils.job import send_message
 
+logger = logging.getLogger(__name__)
+
 
 @command(name='remind', description="提醒", args="{输入包含时间以及内容的自然语言文本}")
 async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -22,7 +25,7 @@ async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Se
 
         # 解析月份
         month = cron.get('month', '*')
-        if month == '*' or month == '?':
+        if month in ['*', '?']:
             month_part = "每月"
         else:
             month_names = [f"{int(m)}月" for m in str(month).split(',')]
@@ -39,11 +42,27 @@ async def remind(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Se
         else:
             day_part = "每天"
 
-        # 时间部分
-        hour = cron.get('hour', '0').zfill(2)
-        minute = cron.get('minute', '0').zfill(2)
+        # 解析时间
+        def parse_time_part(value, unit):
+            if value == '*':
+                return f"每{unit}"
+            if value.startswith('*/'):
+                return f"每{value[2:]}{unit}"
+            # 多个值
+            if ',' in value:
+                return "、".join([f"{int(v):02d}" for v in value.split(',')])
+            return f"{int(value):02d}"
 
-        return f"{month_part}{day_part} {hour}:{minute}"
+        hour = parse_time_part(str(cron.get('hour', '0')), "小时")
+        minute = parse_time_part(str(cron.get('minute', '0')), "分钟")
+
+        # 拼接结果
+        if "每" in hour or "每" in minute:
+            time_part = f"{hour}{minute}"
+        else:
+            time_part = f"{hour}:{minute}"
+
+        return f"{month_part}{day_part} {time_part}"
 
     if len(context.args) == 0:
         await context.bot.send_message(
@@ -121,6 +140,9 @@ EXAMPLE JSON OUTPUT:
         ai_analysis = ai_analysis[:-3]
 
     remind_data = json.loads(ai_analysis)
+
+
+    logger.info(f"remind_data: {remind_data}")
 
     job_id = str(uuid.uuid4())
     remind_content = remind_data.get('remind_content')
