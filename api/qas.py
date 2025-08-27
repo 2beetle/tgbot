@@ -21,7 +21,7 @@ from utils.the_movie_db import TheMovieDB
 
 logger = logging.getLogger(__name__)
 
-HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(5)
+HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
 
 QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(4)
 
@@ -53,7 +53,7 @@ async def api_token_set(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
     context.user_data["configuration"]['qas'].update({
         'api_token': update.message.text
     })
-    await update.message.reply_text("请输入你 QAS 服务的 Save Path 前缀：(开头不要带/，会自动补充)", reply_markup=InlineKeyboardMarkup([[
+    await update.message.reply_text("请输入你 QAS 服务的 TV Save Path 前缀：(开头不要带/，会自动补充)", reply_markup=InlineKeyboardMarkup([[
         InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
     ]]))
     return SAVE_PATH_PREFIX_SET
@@ -65,6 +65,20 @@ async def save_path_prefix_set(update: Update, context: ContextTypes.DEFAULT_TYP
         save_path_prefix = save_path_prefix[:-1]
     context.user_data["configuration"]['qas'].update({
         'save_path_prefix': save_path_prefix
+    })
+    await update.message.reply_text("请输入你 QAS 服务的 MOVIE Save Path 前缀：(开头不要带/，会自动补充)",
+                                    reply_markup=InlineKeyboardMarkup([[
+                                        InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
+                                    ]]))
+    return MOVIE_SAVE_PATH_PREFIX_SET
+
+
+async def movie_save_path_prefix_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    movie_save_path_prefix = '/' + str(update.message.text)
+    if movie_save_path_prefix.endswith('/'):
+        movie_save_path_prefix = movie_save_path_prefix[:-1]
+    context.user_data["configuration"]['qas'].update({
+        'movie_save_path_prefix': movie_save_path_prefix
     })
     await update.message.reply_text(
         "请输入你 QAS 服务的 Pattern：",
@@ -141,6 +155,7 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
     host = context.user_data["configuration"]["qas"]["host"]
     api_token = context.user_data["configuration"]["qas"]["api_token"]
     save_path_prefix = context.user_data["configuration"]["qas"]["save_path_prefix"]
+    movie_save_path_prefix = context.user_data["configuration"]["qas"]["movie_save_path_prefix"]
     pattern = context.user_data["configuration"]["qas"]["pattern"]
     replace = context.user_data["configuration"]["qas"]["replace"]
 
@@ -150,6 +165,7 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
             QuarkAutoDownloadConfig.host: host,
             QuarkAutoDownloadConfig.api_token: api_token,
             QuarkAutoDownloadConfig.save_path_prefix: save_path_prefix,
+            QuarkAutoDownloadConfig.movie_save_path_prefix: movie_save_path_prefix,
             QuarkAutoDownloadConfig.pattern: pattern,
             QuarkAutoDownloadConfig.replace: replace
         })
@@ -159,6 +175,7 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
                 host=host,
                 api_token=api_token,
                 save_path_prefix=save_path_prefix,
+                movie_save_path_prefix=movie_save_path_prefix,
                 pattern=pattern,
                 replace=replace,
                 user_id=user.id
@@ -169,7 +186,8 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
     message = f"""
 <b>Host：</b> {host}
 <b>Api Token：</b> {api_token}
-<b>Save Path 前缀：</b> {save_path_prefix}
+<b>TV Save Path 前缀：</b> {save_path_prefix}
+<b>MOVIE Save Path 前缀：</b> {movie_save_path_prefix}
 <b>Pattern：</b> <code>{pattern}</code>
 <b>Replace：</b> <code>{replace}</code>
 
@@ -220,6 +238,22 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
         )
 
 
+async def qas_add_task_select_resource_type(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    url_id = query.data.split(":")[1]
+    await update.message.reply_text(
+        text="请选择资源类型",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"📺 电视节目", callback_data=f"qas_add_task_tv:{url_id}")
+            ],
+            [
+                InlineKeyboardButton(f"🎬 电影", callback_data=f"qas_add_task_movie:{url_id}")
+            ]
+        ])
+    )
+
 async def qas_add_task_select_tv(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
@@ -235,14 +269,43 @@ async def qas_add_task_select_tv(update: Update, context: ContextTypes.DEFAULT_T
         tv_name = tv.get('name')
         tv_year = f"({tv.get('first_air_date').split('-')[0]})"
         context.user_data['qas_add_task'][tv_info_tmp_id] = {
-            "tv_name": tv_name,
-            "tv_year": tv_year,
+            "resource_name": tv_name,
+            "resource_year": tv_year,
+            "resource_type": "tv"
         }
         await query.message.reply_photo(
             photo=tv.get('photo_url'),
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(f"选择 {tv_name} {tv_year}", callback_data=f"qas_add_task_pattern_input:{tv_info_tmp_id}")
+                ]
+            ])
+        )
+
+async def qas_add_task_select_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    task_name = context.user_data['qas_add_task']['taskname']
+    url_id = query.data.split(":")[1]
+    context.user_data['qas_add_task']['shareurl'] = context.user_data['qas_add_task']['shareurl'][url_id]
+    movie_list = await TheMovieDB().search_movie(task_name, count=5)
+    if not movie_list:
+        await update.effective_message.reply_text("tmdb 查询不到相关信息，请重新运行添加任务指令并输入不同剧名")
+        return
+    for movie in movie_list:
+        movie_info_tmp_id = get_random_letter_number_id()
+        movie_name = movie.get('name')
+        movie_year = f"({movie.get('first_air_date').split('-')[0]})"
+        context.user_data['qas_add_task'][movie_info_tmp_id] = {
+            "resource_name": movie_name,
+            "resource_year": movie_year,
+            "resource_type": "movie"
+        }
+        await query.message.reply_photo(
+            photo=movie.get('photo_url'),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"选择 {movie_name} {movie_year}", callback_data=f"qas_add_task_pattern_input:{movie_info_tmp_id}")
                 ]
             ])
         )
@@ -255,36 +318,47 @@ async def qas_add_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE,
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
     tv_info_id = query.data.split(":")[1]
-    tv_name = context.user_data['qas_add_task'][tv_info_id]['tv_name']
-    tv_year = context.user_data['qas_add_task'][tv_info_id]['tv_year']
-    context.user_data['qas_add_task']['tv_name'] = f'{tv_name} {tv_year}'
-    context.user_data['qas_add_task']['taskname'] = tv_name
-    context.user_data['qas_add_task'].update({
-        'savepath': os.path.join(qas_config.save_path_prefix, context.user_data['qas_add_task']['tv_name'])
-    })
+    resource_name = context.user_data['qas_add_task'][tv_info_id]['resource_name']
+    resource_year = context.user_data['qas_add_task'][tv_info_id]['resource_year']
+    resource_type = context.user_data['qas_add_task'][tv_info_id]['resource_type']
+    context.user_data['qas_add_task']['resource_name'] = f'{resource_name} {resource_year}'
+    context.user_data['qas_add_task']['taskname'] = resource_name
 
-    await update.effective_message.reply_text(
-        text="AI 根据分享链接中的文件内容生成筛选 4K 资源正则中..."
-    )
-    qas_config = session.query(QuarkAutoDownloadConfig).filter(
-        QuarkAutoDownloadConfig.user_id == user.id
-    ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
-    params = await qas.ai_generate_params(context.user_data['qas_add_task']['shareurl'])
-    context.user_data['qas_add_task']['ai_params'] = params
+    if resource_type == 'tv':
+        context.user_data['qas_add_task'].update({
+            'savepath': os.path.join(qas_config.save_path_prefix, context.user_data['qas_add_task']['resource_name'])
+        })
 
-    await update.effective_message.reply_text(
-        text=f"拓展 save path ({context.user_data['qas_add_task']['savepath']})：",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"❌ 不拓展 save path", callback_data=f"qas_add_task_save_path_button:")
-            ],
-            [
-                InlineKeyboardButton(f"❌ 取消新增操作", callback_data=f"cancel_qas_update_task")
-            ]
-        ])
-    )
-    return QAS_ADD_TASK_EXTRA_SAVE_PATH_SET
+        await update.effective_message.reply_text(
+            text="AI 根据分享链接中的文件内容生成筛选 4K 资源正则中..."
+        )
+        qas_config = session.query(QuarkAutoDownloadConfig).filter(
+            QuarkAutoDownloadConfig.user_id == user.id
+        ).first()
+        qas = QuarkAutoDownload(api_token=qas_config.api_token)
+        params = await qas.ai_generate_params(context.user_data['qas_add_task']['shareurl'])
+        context.user_data['qas_add_task']['ai_params'] = params
+
+        await update.effective_message.reply_text(
+            text=f"拓展 save path ({context.user_data['qas_add_task']['savepath']})：",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"❌ 不拓展 save path", callback_data=f"qas_add_task_save_path_button:")
+                ],
+                [
+                    InlineKeyboardButton(f"❌ 取消新增操作", callback_data=f"cancel_qas_update_task")
+                ]
+            ])
+        )
+        return QAS_ADD_TASK_EXTRA_SAVE_PATH_SET
+    elif resource_type == 'movie':
+        context.user_data['qas_add_task'].update({
+            'savepath': os.path.join(qas_config.movie_save_path_prefix, context.user_data['qas_add_task']['resource_name'])
+        })
+        context.user_data['qas_add_task']['pattern'] = '*.(mp4|mkv|iso|ass|srt)'
+        context.user_data['qas_add_task']['replace'] = f'{context.user_data['qas_add_task']['resource_name']}.{{EXT}}'
+        return await qas_add_task_pattern_ask_aria2(update, context, session, user)
+    return None
 
 
 async def qas_add_task_extra_save_path_set_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -1072,6 +1146,12 @@ handlers = [
                     depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(save_path_prefix_set)
                 )
             ],
+            MOVIE_SAVE_PATH_PREFIX_SET: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(movie_save_path_prefix_set)
+                )
+            ],
             PATTERN_SET: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
@@ -1204,8 +1284,16 @@ handlers = [
         ],
     ),
     CallbackQueryHandler(
-            depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_tv),
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_resource_type),
             pattern=r"^qas_add_task_state:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_tv),
+            pattern=r"^qas_add_task_tv:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_movie),
+            pattern=r"^qas_add_task_movie:.*$"
     ),
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_delete_task_handler),
