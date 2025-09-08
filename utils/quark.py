@@ -50,9 +50,9 @@ class Quark:
                              })
         if not stoken_resp.ok:
             logger.error(f'Failed to get quark stoken {url}, error: {stoken_resp.text}')
-            return quark_id, None, pdir_fid
+            return quark_id, None, pdir_fid, stoken_resp.json().get('message', '状态未知')
         stoken = stoken_resp.json()['data']['stoken']
-        return quark_id, stoken, pdir_fid
+        return quark_id, stoken, pdir_fid, None
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
         sub_resp = requests.get(f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
@@ -75,9 +75,9 @@ class Quark:
             return [file for file in sub_resp.json()['data']['list'] if not file.get('dir')]
 
     async def check_link(self, session: aiohttp.ClientSession, link: str):
-        quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=link)
-        if quark_id is None or stoken is None or pdir_fid is None:
-            return link, "状态未知"
+        quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link)
+        if error is not None:
+            return link, error
         async with session.get(
                 "https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail",
                 params={
@@ -91,9 +91,10 @@ class Quark:
                     "ver": 2,
                 },
         ) as resp:
-            if resp.status == 200:
+            if resp.ok:
                 return link, "有效"
             else:
+                logger.error(f"link {link} check fail: {await resp.text()}")
                 data = await resp.json()
                 return link, data.get("message")
 
