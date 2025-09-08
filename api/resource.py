@@ -52,13 +52,14 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
 
     all_links = list()
 
+    # cs
     for channel_data in cs_result:
         for item in channel_data.get("list", []):
             for link in item.get("cloudLinks", []):
                 url = link.get("link")
                 if url:
                     all_links.append(url)
-
+    # ps
     for cloud_type, resources in ps_result.get('merged_by_type').items():
         for resource in resources:
             all_links.append(resource.get('url'))
@@ -66,9 +67,11 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
     quark = Quark()
     links_valid = await quark.links_valid(links=all_links)
 
+    # cs
     cloud_saver = context.bot_data['cloud_saver']
     cs_messages = await cloud_saver.format_links_by_cloud_type(cs_result, links_valid)
 
+    # ps
     p = PanSou()
     ps_messages = await p.format_links_by_cloud_type(ps_result, links_valid)
 
