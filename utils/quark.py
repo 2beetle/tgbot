@@ -76,6 +76,8 @@ class Quark:
 
     async def check_link(self, session: aiohttp.ClientSession, link: str):
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=link)
+        if quark_id is None or stoken is None or pdir_fid is None:
+            return link, "状态未知"
         async with session.get(
                 "https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail",
                 params={
