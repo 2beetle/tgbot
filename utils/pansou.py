@@ -10,14 +10,7 @@ class PanSou(object):
         self.host = os.getenv('PANSOU_HOST')
         self.cloud_type_map = {
             "quark": "夸克网盘",
-            "ALIPAN": "阿里云盘",
-            "ALIYUN": "阿里云盘",
-            "123PAN": "123网盘",
-            "PAN123": "123网盘",
-            "XUNLEI": "迅雷云盘",
-            "WETRANSFER": "WeTransfer",
-            "baidu": "百度网盘",
-            "UC": "UC网盘",
+            "baidu": "百度网盘"
         }
 
     async def search(self, keyword):

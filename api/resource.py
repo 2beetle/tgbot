@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import defaultdict
 
 from sqlalchemy.orm import Session
 from telegram import Update
@@ -33,6 +34,9 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
     search_content = context.args[0]
 
+    cloud_saver = context.bot_data['cloud_saver']
+    p = PanSou()
+
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="资源搜索中，请稍等",
@@ -50,7 +54,8 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="html"
     )
 
-    all_links = list()
+    all_links = defaultdict(list)
+    links_valid = dict()
 
     # cs
     for channel_data in cs_result:
@@ -58,21 +63,25 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
             for link in item.get("cloudLinks", []):
                 url = link.get("link")
                 if url:
-                    all_links.append(url)
+                    all_links[cloud_saver.cloud_type_map.get(link.get("cloudType", "").upper())].append(url)
+                    links_valid[url] = '状态未知'
     # ps
     for cloud_type, resources in ps_result.get('merged_by_type').items():
         for resource in resources:
-            all_links.append(resource.get('url'))
+            all_links[p.cloud_type_map.get(cloud_type)].append(resource.get('url'))
+            links_valid[resource.get('url')] = '状态未知'
 
+    # 查看夸克链接的状态
     quark = Quark()
-    links_valid = await quark.links_valid(links=all_links)
+    quark_links_valid = await quark.links_valid(links=all_links.get('夸克网盘', []))
+
+    # 更新各网盘链接状态
+    links_valid.update(quark_links_valid)
 
     # cs
-    cloud_saver = context.bot_data['cloud_saver']
     cs_messages = await cloud_saver.format_links_by_cloud_type(cs_result, links_valid)
 
     # ps
-    p = PanSou()
     ps_messages = await p.format_links_by_cloud_type(ps_result, links_valid)
 
     messages = cs_messages + ps_messages
