@@ -36,7 +36,7 @@ class Quark:
             else:
                 pdir_fid = url.split('/')[-1]
 
-        if pdir_fid == 'share':
+        if pdir_fid == 'share' or pdir_fid == quark_id:
             pdir_fid = 0
 
         stoken_resp = requests.post("https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
@@ -94,7 +94,7 @@ class Quark:
             if resp.ok:
                 return link, "有效"
             else:
-                logger.error(f"link {link} check fail: {await resp.text()}")
+                logger.error(f"link {link} (quark_id: {quark_id}, stoken: {stoken}, pdir_fid: {pdir_fid}) check fail: {await resp.text()}")
                 data = await resp.json()
                 return link, data.get("message")
 
@@ -109,5 +109,5 @@ class Quark:
 
 if __name__ == '__main__':
     quark = Quark()
-    result = asyncio.run(quark.links_valid(['https://pan.quark.cn/s/30be6ed6692c#/list/share', 'https://pan.quark.cn/s/186d42868348#/list/share']))
+    result = asyncio.run(quark.links_valid(['https://pan.quark.cn/s/30be6ed6692c#/list/share', 'https://pan.quark.cn/s/186d42868348#/list/share', 'https://pan.quark.cn/s/3b84769ebcbf']))
     print(result)
