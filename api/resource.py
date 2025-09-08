@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from sqlalchemy.orm import Session
@@ -10,19 +11,35 @@ from config.config import get_allow_roles_command_map
 from db.models.log import OperationLog, OperationType
 from db.models.user import User
 from utils.command_middleware import depends
-
+from utils.pansou import PanSou
 
 logger = logging.getLogger(__name__)
 
 
 @command(name='search_media_resource', description="搜索资源", args="{resource name}")
 async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    cloud_saver = context.bot_data['cloud_saver']
+    async def cs_task(search_content: str):
+        cloud_saver = context.bot_data['cloud_saver']
+        resp = cloud_saver.search(search_content)
+        messages = cloud_saver.format_links_by_cloud_type(resp.json().get('data'))
+        return messages
+
+    async def ps_task(search_content: str):
+        p = PanSou()
+        data = p.search(search_content)
+        messages = p.format_links_by_cloud_type(data.get('data'))
+        return messages
+
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
     search_content = context.args[0]
-    resp = cloud_saver.search(search_content)
-    messages = cloud_saver.format_links_by_channel(resp.json().get('data'))
+
+    cs_result, ps_result = await asyncio.gather(
+        cs_task(search_content),
+        ps_task(search_content)
+    )
+
+    messages = cs_result + ps_result
 
     session.add(
         OperationLog(

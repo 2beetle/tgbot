@@ -66,3 +66,27 @@ class CloudSaver:
 
             result.append('\n'.join(lines))
         return result
+
+    def format_links_by_cloud_type(self, data):
+        result = []
+        # 按网盘类型分组，每组存 (title, link) 列表
+        cloudtype_links = defaultdict(list)
+
+        for channel_data in data:
+            for item in channel_data.get("list", []):
+                title = item.get("title", "无标题")
+                for link in item.get("cloudLinks", []):
+                    url = link.get("link")
+                    raw_type = link.get("cloudType", "").upper()
+                    if url:
+                        cloudtype_links[raw_type].append((title, url))
+
+        for cloud_type, resources in cloudtype_links.items():
+            for i in range(0, len(resources), 25):
+                lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>"]
+                chunk_data = resources[i:i + 25]
+                for resource in chunk_data:
+                    lines.append(f'🔗 <a href="{resource.get('url')}">{resource.get('note')}</a>')
+
+                result.append('\n'.join(lines))
+        return result

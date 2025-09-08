@@ -19,7 +19,7 @@ from utils.command_middleware import depends
 
 from api import user
 from api import the_movie_db
-from api import cloud_saver
+from api import resource
 from api import common
 from api import job
 from api import qas
@@ -38,7 +38,7 @@ def register_extra_handlers(app):
     modules = [
         'api.common',
         'api.the_movie_db',
-        'api.cloud_saver',
+        'api.resource',
         'api.job',
         'api.qas',
         'api.emby',
