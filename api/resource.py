@@ -12,6 +12,7 @@ from db.models.log import OperationLog, OperationType
 from db.models.user import User
 from utils.command_middleware import depends
 from utils.pansou import PanSou
+from utils.quark import Quark
 
 logger = logging.getLogger(__name__)
 
@@ -20,26 +21,58 @@ logger = logging.getLogger(__name__)
 async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     async def cs_task(search_content: str):
         cloud_saver = context.bot_data['cloud_saver']
-        resp = cloud_saver.search(search_content)
-        messages = cloud_saver.format_links_by_cloud_type(resp.json().get('data'))
-        return messages
+        resp = await cloud_saver.search(search_content)
+        return resp.json().get('data')
 
     async def ps_task(search_content: str):
         p = PanSou()
-        data = p.search(search_content)
-        messages = p.format_links_by_cloud_type(data.get('data'))
-        return messages
+        data = await p.search(search_content)
+        return data.get('data')
 
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
     search_content = context.args[0]
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="资源搜索中，请稍等",
+        parse_mode="html"
+    )
 
     cs_result, ps_result = await asyncio.gather(
         cs_task(search_content),
         ps_task(search_content)
     )
 
-    messages = cs_result + ps_result
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="资源搜索已完成，正在校验资源有效性，请稍等",
+        parse_mode="html"
+    )
+
+    all_links = list()
+
+    for channel_data in cs_result:
+        for item in channel_data.get("list", []):
+            for link in item.get("cloudLinks", []):
+                url = link.get("link")
+                if url:
+                    all_links.append(url)
+
+    for cloud_type, resources in ps_result.get('merged_by_type').items():
+        for resource in resources:
+            all_links.append(resource.get('url'))
+
+    quark = Quark()
+    links_valid = await quark.links_valid(links=all_links)
+
+    cloud_saver = context.bot_data['cloud_saver']
+    cs_messages = await cloud_saver.format_links_by_cloud_type(cs_result, links_valid)
+
+    p = PanSou()
+    ps_messages = await p.format_links_by_cloud_type(ps_result, links_valid)
+
+    messages = cs_messages + ps_messages
 
     session.add(
         OperationLog(

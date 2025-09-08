@@ -34,10 +34,10 @@ class CloudSaver:
             headers={'Authorization': f'Bearer {token}'}
         )
 
-    def search(self, search_content):
+    async def search(self, search_content):
         return self.get('/api/search', {'keyword': search_content})
 
-    def format_links_by_channel(self, data):
+    async def format_links_by_channel(self, data):
         result = []
 
         for channel_data in data:
@@ -67,7 +67,7 @@ class CloudSaver:
             result.append('\n'.join(lines))
         return result
 
-    def format_links_by_cloud_type(self, data):
+    async def format_links_by_cloud_type(self, data, links_valid: dict):
         result = []
         # 按网盘类型分组，每组存 (title, link) 列表
         cloudtype_links = defaultdict(list)
@@ -83,10 +83,10 @@ class CloudSaver:
 
         for cloud_type, resources in cloudtype_links.items():
             for i in range(0, len(resources), 25):
-                lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>"]
+                lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>（cs资源）"]
                 chunk_data = resources[i:i + 25]
                 for resource in chunk_data:
-                    lines.append(f'🔗 <a href="{resource.get('url')}">{resource.get('note')}</a>')
+                    lines.append(f'🔗 <a href="{resource[1]}">{resource[0]}（{links_valid.get(resource[1], '状态未知')}）</a>')
 
                 result.append('\n'.join(lines))
         return result

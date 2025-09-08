@@ -121,7 +121,8 @@ class QuarkAutoDownload:
                                     '_size': 40,
                                     'pdir_fid': pdir_fid,
                                     'pwd_id': quark_id,
-                                    'stoken': stoken
+                                    'stoken': stoken,
+                                    'ver': 2
                                 })
         if not sub_resp.ok:
             logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {sub_resp.json()}')
