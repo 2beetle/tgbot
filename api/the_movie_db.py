@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, CallbackQueryHandler
 from tmdbv3api import TMDb, TV, Genre, Movie
+import telegram
 
 from api.base import command
 from config.config import TMDB_API_KEY, TMDB_POSTER_BASE_URL, get_allow_roles_command_map
@@ -128,16 +129,18 @@ async def tmdb_search_tv(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
         message = await format_tmdb_tv_search(res, genre_mapping, detail)
-        if index + 1 < len(search):
+        try:
             await update.message.reply_photo(photo=photo_url, caption=message, parse_mode="html")
-        else:
-            keyboard = tmdb_search_tv_build_keyboard(search_content, page, search.get('total_pages'))
-            await update.message.reply_photo(
-                photo=photo_url,
-                caption=message,
-                reply_markup=keyboard,
-                parse_mode='HTML'
-            )
+        except telegram.error.BadRequest as e:
+            logger.error(f"reply_photo (photo: {photo_url}, caption: {message}) error: {e}")
+
+    keyboard = tmdb_search_tv_build_keyboard(search_content, page, search.get('total_pages'))
+    await update.message.reply_text(
+        text="可选择以下操作：",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+
     OperationLog(
         user_id=user.id,
         operation=OperationType.READ,
@@ -193,16 +196,18 @@ async def tmdb_search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
         message = await format_tmdb_movie_search(res, genre_mapping)
-        if index + 1 < len(search):
+
+        try:
             await update.message.reply_photo(photo=photo_url, caption=message, parse_mode="html")
-        else:
-            keyboard = tmdb_search_movie_build_keyboard(search_content, page, search.get('total_pages'))
-            await update.message.reply_photo(
-                photo=photo_url,
-                caption=message,
-                reply_markup=keyboard,
-                parse_mode='HTML'
-            )
+        except telegram.error.BadRequest as e:
+            logger.error(f"reply_photo (photo: {photo_url}, caption: {message}) error: {e}")
+
+    keyboard = tmdb_search_movie_build_keyboard(search_content, page, search.get('total_pages'))
+    await update.message.reply_text(
+        text="可选择以下操作：",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
     OperationLog(
         user_id=user.id,
         operation=OperationType.READ,

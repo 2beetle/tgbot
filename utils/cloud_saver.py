@@ -86,7 +86,7 @@ class CloudSaver:
                 lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>（cs资源）"]
                 chunk_data = resources[i:i + 25]
                 for resource in chunk_data:
-                    lines.append(f'🔗 <a href="{resource[1]}">{resource[0]}（{links_valid.get(resource[1], '状态未知')}）</a>')
+                    lines.append(f'🔗 <a href="{resource[1]}">{resource[0]}</a> （{links_valid.get(resource[1], '状态未知')}）')
 
                 result.append('\n'.join(lines))
         return result
