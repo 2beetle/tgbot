@@ -96,11 +96,15 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
     session.commit()
 
     for message in messages:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=message,
-            parse_mode="html"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=message,
+                parse_mode="html"
+            )
+        except Exception as e:
+            logger.error(f"resource reply (text: {message}) error: {e}")
+            continue
 
 
 async def on_search_media_resource_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
