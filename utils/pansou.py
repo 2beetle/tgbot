@@ -36,7 +36,7 @@ class PanSou(object):
                 lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>（pansou资源）"]
                 chunk_data = resources[i:i + 25]
                 for resource in chunk_data:
-                    lines.append(f'🔗 <a href="{resource.get('url')}">{resource.get('note')}</a> （{links_valid.get(resource.get('url'), '状态未知')}）')
+                    lines.append(f'🔗 <a href="{resource.get('url')}">{resource.get('note').replace('<', '[').replace('>', ']')}</a> （{links_valid.get(resource.get('url'), '状态未知')}）')
 
                 messages.append('\n'.join(lines))
         return messages

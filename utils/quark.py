@@ -22,7 +22,7 @@ class Quark:
 
         return quark_id, pwd
 
-    async def get_quark_id_stoken_pdir_fid(self, url):
+    async def get_quark_id_stoken_pdir_fid(self, url, session: aiohttp.ClientSession):
         quark_id, pass_code = await self.extract_quark_share_info(url)
         match = re.search(r'/([^/]+)-[^/]*$', url)
         if match:
@@ -39,20 +39,23 @@ class Quark:
         if pdir_fid == 'share' or pdir_fid == quark_id:
             pdir_fid = 0
 
-        stoken_resp = requests.post("https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
-                             headers={
-                                 'Content-Type': 'application/json',
-                             },
-                             json={
-                                 "pwd_id": quark_id,
-                                 "passcode": pass_code,
-                                 "support_visit_limit_private_share": True
-                             })
-        if not stoken_resp.ok:
-            logger.error(f'Failed to get quark stoken {url}, error: {stoken_resp.text}')
-            return quark_id, None, pdir_fid, stoken_resp.json().get('message', '状态未知')
-        stoken = stoken_resp.json()['data']['stoken']
-        return quark_id, stoken, pdir_fid, None
+        async with session.post(
+                "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
+                headers={
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    "pwd_id": quark_id,
+                    "passcode": pass_code,
+                    "support_visit_limit_private_share": True
+                },
+        ) as stoken_resp:
+            json_data = await stoken_resp.json()
+            if not stoken_resp.ok:
+                logger.error(f'Failed to get quark stoken {url}, error: {await stoken_resp.text()}')
+                return quark_id, None, pdir_fid, json_data.get('message', '状态未知')
+            stoken = json_data['data']['stoken']
+            return quark_id, stoken, pdir_fid, None
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
         sub_resp = requests.get(f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
@@ -75,7 +78,7 @@ class Quark:
             return [file for file in sub_resp.json()['data']['list'] if not file.get('dir')]
 
     async def check_link(self, session: aiohttp.ClientSession, link: str):
-        quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link)
+        quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link, session=session)
         if error is not None:
             return link, error
         async with session.get(
@@ -84,7 +87,7 @@ class Quark:
                     "pr": "ucpro",
                     "fr": "pc",
                     "uc_param_str": "",
-                    "_size": 40,
+                    "_size": 5,
                     "pdir_fid": pdir_fid,
                     "pwd_id": quark_id,
                     "stoken": stoken,
