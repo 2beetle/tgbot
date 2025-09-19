@@ -591,14 +591,15 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.effective_message.reply_text(
             text=f"Ai分类季数中，请稍等"
         )
-        seasons_fid = await qas.ai_classify_seasons(context.user_data['qas_add_task']['shareurl'])
+        seasons_fid, extract_seasons = await qas.ai_classify_seasons(context.user_data['qas_add_task']['shareurl'])
         await update.effective_message.reply_text(
             text=f"""
 Ai识别季数完成，识别结果为：
 
-<code>{json.dumps(seasons_fid, indent=2)}</code>
+<code>{json.dumps(extract_seasons, indent=2)}</code>
 
-，即将创建任务"""
+，即将创建任务""",
+            parse_mode="html",
         )
         for season, fid in seasons_fid.items():
             await qas_add_task(

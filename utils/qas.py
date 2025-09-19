@@ -4,6 +4,7 @@ import json
 import logging
 import pprint
 import re
+from typing import Tuple
 from urllib.parse import urlparse, parse_qs
 
 import pytz
@@ -165,7 +166,8 @@ class QuarkAutoDownload:
                     await recursive_get_fid_files(file['fid'], file['file_name'], quark_id, stoken, fid_files, include_dir)
                     if include_dir:
                         dir_files.append({
-                            "file_name": file['file_name'] + " (文件夹)",
+                            "file_name": file['file_name'],
+                            "dir": file['dir'],
                             "last_update_at": datetime.datetime.fromtimestamp(int(file['last_update_at']) / 1000,
                                                                               tz=datetime.UTC
                                                                               ).astimezone(pytz.timezone(TIME_ZONE)),
@@ -173,6 +175,7 @@ class QuarkAutoDownload:
                 else:
                     dir_files.append({
                         "file_name": file['file_name'],
+                        "dir": file['dir'],
                         "last_update_at": datetime.datetime.fromtimestamp(int(file['last_update_at']) / 1000,
                                                                           tz=datetime.UTC
                                                                           ).astimezone(pytz.timezone(TIME_ZONE)),
@@ -193,7 +196,8 @@ class QuarkAutoDownload:
         for i, file in enumerate(sorted(files, key=lambda x: x['file_name'])):
             is_last = i == len(files) - 1
             prefix = '└──' if is_last else '├──'
-            lines.append(f"{prefix} {file['file_name']}")
+            icon = '📂' if file['dir'] is True else '🎥'
+            lines.append(f"{prefix} {icon} {file['file_name']}")
         return '\n'.join(lines)
 
     async def get_tree_paragraphs(self, fid_files: dict) -> list[str]:
@@ -271,7 +275,7 @@ class QuarkAutoDownload:
         else:
             return resp.text
 
-    async def ai_classify_seasons(self, url: str) -> dict:
+    async def ai_classify_seasons(self, url: str) -> Tuple[dict, dict]:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=True)
         dirname_fid_map = dict()
@@ -340,6 +344,7 @@ class QuarkAutoDownload:
             ai_analysis = ai_analysis[:-3]
 
         extract_seasons = json.loads(ai_analysis)
+        extract_seasons = dict(sorted(extract_seasons.items(), key=lambda x: int(x[1].split()[1])))
         logger.info(f"ai识别文件夹季数结果：{extract_seasons}")
 
         seasons_fid = dict()
@@ -351,6 +356,7 @@ class QuarkAutoDownload:
                 })
 
         logger.info(f"整理后结果 {seasons_fid}")
+        return seasons_fid, extract_seasons
 
 
 
