@@ -9,7 +9,7 @@ from urllib.parse import urlparse, parse_qs
 import pytz
 import requests
 
-from config.config import TIME_ZONE, AI_API_KEYS
+from config.config import TIME_ZONE, AI_API_KEYS, AI_MODEL, AI_API_KEY, AI_HOST
 from utils.ai import openapi_chat
 
 logger = logging.getLogger(__name__)
@@ -97,6 +97,10 @@ class QuarkAutoDownload:
                 pdir_fid = url.split('/')[-2]
             else:
                 pdir_fid = url.split('/')[-1]
+
+        if pdir_fid == 'share' or pdir_fid == quark_id:
+            pdir_fid = 0
+
         stoken_resp = requests.post("https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
                              headers={
                                  'Content-Type': 'application/json',
@@ -152,13 +156,20 @@ class QuarkAutoDownload:
             })
         return result
 
-    async def get_fid_files(self, url: str):
-        async def recursive_get_fid_files(fid, file_name, quark_id, stoken, fid_files):
+    async def get_fid_files(self, url: str, include_dir: bool = False):
+        async def recursive_get_fid_files(fid, file_name, quark_id, stoken, fid_files, include_dir):
             dir_files = list()
             files = await self.get_quark_dir_detail(quark_id=quark_id, stoken=stoken, pdir_fid=fid)
             for file in files:
                 if file['dir'] is True:
-                    await recursive_get_fid_files(file['fid'], file['file_name'], quark_id, stoken, fid_files)
+                    await recursive_get_fid_files(file['fid'], file['file_name'], quark_id, stoken, fid_files, include_dir)
+                    if include_dir:
+                        dir_files.append({
+                            "file_name": file['file_name'] + " (文件夹)",
+                            "last_update_at": datetime.datetime.fromtimestamp(int(file['last_update_at']) / 1000,
+                                                                              tz=datetime.UTC
+                                                                              ).astimezone(pytz.timezone(TIME_ZONE)),
+                        })
                 else:
                     dir_files.append({
                         "file_name": file['file_name'],
@@ -174,7 +185,7 @@ class QuarkAutoDownload:
         if stoken is None:
             return None
         fid_files = dict()
-        await recursive_get_fid_files(0, "root", quark_id, stoken, fid_files)
+        await recursive_get_fid_files(0, "root", quark_id, stoken, fid_files, include_dir)
         return fid_files
 
     async def build_unicode_tree_paragraph(self, folder_name: str, files: list) -> str:
@@ -230,9 +241,9 @@ class QuarkAutoDownload:
         ai_analysis = await openapi_chat(
             role="你是一个编写正则表达式的专家，善于从元素列表中通过编写正则提取到想要的元素",
             prompt=prompt,
-            host=AI_API_KEYS.get('kimi').get('host'),
-            api_key=AI_API_KEYS.get('kimi').get('api_key'),
-            model=AI_API_KEYS.get('kimi').get('model'),
+            host=AI_HOST,
+            api_key=AI_API_KEY,
+            model=AI_MODEL,
         )
 
         # 清理可能的非JSON内容
@@ -260,31 +271,90 @@ class QuarkAutoDownload:
         else:
             return resp.text
 
+    async def ai_classify_seasons(self, url: str) -> dict:
+        quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
+        dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=True)
+        dirname_fid_map = dict()
+        for dir_detail in dir_details:
+            if dir_detail['dir'] is True:
+                dirname_fid_map[dir_detail['file_name']] = dir_detail['fid']
+
+        logger.info(f"整理前文件夹 fid：{dirname_fid_map}")
+
+        prompt = f"""
+以下是一个字典，其中字典的key为文件夹名称，现在需要你帮我提取出其中文件夹名称与电视剧季数有关的数据:
+{dirname_fid_map}
+要求：
+1. 文件夹名称与电视剧季数无关的需要排除
+2. 匹配到与电视剧季数相关的文件夹名称后需要重命名为「Season {{季数}}」，其中{{季数}}为两个数字，例如如第一季为Season 01，第三季为Season 03，第十一季为Season 11
+3. 输出一个字典，key为重命名前的文件夹名称，value为重命名后的电视剧季数
+
+例子：
+1. 
+输入：
+{{
+    '纸钞屋S01': 'e6b8a848e57c4988b719facff5a1b45f',
+    '纸钞屋S02': '569e17e641fc46638c2b9ea06f278d12',
+    '纸钞屋S03': 'b696a6df6bfb447f9c638858bdbcd3e4',
+    '纸钞屋S04': '94f8753593f647f1af26089230d79e76',
+    '纸钞屋S05': 'f0529a63ac464e299e39b0caa3001df3',
+    '相关图片': "f0529a63ac464e299e39bdddd001df3"
+}}
+输出：
+{{
+    '纸钞屋S01': 'Season 01',
+    '纸钞屋S02': 'Season 02',
+    '纸钞屋S03': 'Season 03',
+    '纸钞屋S04': 'Season 04',
+    '纸钞屋S05': 'Season 05'
+}}
+
+2. 
+输入：
+{{
+    '龙族第二季': 'e6b8a848e57c4988b719facff5a1b45f',
+    '龙族第五季': '569e17e641fc46638c2b9ea06f278d12',
+    '更新提醒': "f0529a63ac464e299e39bdddd001df3"
+}}
+ 
+输出：
+{{
+    '龙族第二季': 'Season 02',
+    '龙族第五季': 'Season 05',
+}}
+ 
+"""
+        ai_analysis = await openapi_chat(
+            role="你是一个影视剧季数分类专家，善于从多个文件夹列表中找到和影视剧季数相关的文件夹",
+            prompt=prompt,
+            host=AI_HOST,
+            api_key=AI_API_KEY,
+            model=AI_MODEL,
+        )
+
+        # 清理可能的非JSON内容
+        ai_analysis = ai_analysis.strip()
+        if ai_analysis.startswith("```json"):
+            ai_analysis = ai_analysis[7:]
+        if ai_analysis.endswith("```"):
+            ai_analysis = ai_analysis[:-3]
+
+        extract_seasons = json.loads(ai_analysis)
+        logger.info(f"ai识别文件夹季数结果：{extract_seasons}")
+
+        seasons_fid = dict()
+
+        for dirname, fid in dirname_fid_map.items():
+            if dirname in extract_seasons:
+                seasons_fid.update({
+                    extract_seasons[dirname]: fid
+                })
+
+        logger.info(f"整理后结果 {seasons_fid}")
+
 
 
 if __name__ == '__main__':
     qas = QuarkAutoDownload(api_token='')
-    # result = asyncio.run(qas.get_quark_id_stoken_pdir_fid('https://pan.qualk.cn/s/a6b7fdfb9a09'))
-    url = "https://pan.qualk.cn/s/a6b7fdfb9a09"
-    headers = {
-        "Host": "pan.qualk.cn",
-        "Sec-Fetch-Site": "none",
-        "Connection": "keep-alive",
-        "Sec-Fetch-Mode": "navigate",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/22F76 Safari/604.1",
-        "Accept-Language": "zh-CN,zh-Hans;q=0.9",
-        "Sec-Fetch-Dest": "document",
-        "Accept-Encoding": "gzip, deflate, br"
-    }
-    resp = requests.get(url, headers=headers)
-    print(resp.json())
-    # # pprint.pprint(qas.data(host='https://quark-auto-save.beocean.net'))
-    # url = 'https://pan.quark.cn/s/509d0c3f6b4e#/list/share/'
-    # url = 'https://pan.quark.cn/s/cd43e673582a?pwd=QtMq#/list/share'
-    # url = 'https://pan.quark.cn/s/3fa9436351de#/list/share/bcd673aa16d6485cb3780489fb5c7c99-%E3%80%90%E5%91%A8%E5%85%AD%E3%80%91%E5%87%A1%E4%BA%BA.%E4%BF%AE%E4%BB%99.%E4%BC%A0/'
-    # url = 'https://pan.quark.cn/s/5cf6f43d4da5#/list/share/c87624b1a407448eb5b48fb9bd345bdc-D 罗大路'
-    # # url = 'https://pan.quark.cn/s/e333817273ca#/list/share/c2149426584b458d97795d1902838507'
-    # # url = 'https://pan.quark.cn/s/e333817273ca#/list/share'
-    # params = asyncio.run(qas.ai_generate_params(url))
-    # pprint.pprint(params)
+    url = "https://pan.quark.cn/s/351409f4f293#/list/share/e9f31ac4f4fc4832a01315787d834613"
+    asyncio.run(qas.ai_classify_seasons(url))

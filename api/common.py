@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 
 from api.base import command
-from config.config import TIME_ZONE, AI_API_KEYS
+from config.config import TIME_ZONE, AI_API_KEYS, AI_HOST, AI_API_KEY, AI_MODEL
 from db.models.job import UserApschedulerJobs
 from db.models.user import User
 from utils.ai import openapi_chat
@@ -127,9 +127,9 @@ EXAMPLE JSON OUTPUT:
     ai_analysis = await openapi_chat(
         role="你是一个信息提取专家，能够根据要求准确地提取到所需内容",
         prompt=prompt,
-        host=AI_API_KEYS.get('kimi').get('host'),
-        api_key=AI_API_KEYS.get('kimi').get('api_key'),
-        model=AI_API_KEYS.get('kimi').get('model'),
+        host=AI_HOST,
+        api_key=AI_API_KEY,
+        model=AI_MODEL,
     )
 
     # 清理可能的非JSON内容

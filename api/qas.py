@@ -2,6 +2,7 @@ import html
 import json
 import logging
 import os.path
+import re
 
 from sqlalchemy.orm import Session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -209,18 +210,28 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
         await update.message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
     quark_share_url = context.args[0]
     task_name = context.args[1]
+    if not quark_share_url.endswith('/'):
+        quark_share_url += '/'
+
+    # 提取链接根路径
+    pattern = r"(https://pan\.quark\.cn/s/[^#]+#/list/share/)"
+    match = re.search(pattern, quark_share_url)
+    if match:
+        quark_share_url = match.group(1)
+
     context.user_data.update({
         'qas_add_task': {
             "shareurl": {},
             "taskname": task_name,
             "pattern": qas_config.pattern,
             "replace": qas_config.replace,
+            "is_multi_seasons": False,
+            "quark_share_url_origin": quark_share_url,
         }
     })
-    if not quark_share_url.endswith('/'):
-        quark_share_url += '/'
+
     qas = QuarkAutoDownload(api_token=qas_config.api_token)
-    fid_files = await qas.get_fid_files(quark_share_url)
+    fid_files = await qas.get_fid_files(quark_share_url, True)
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
     for _ in tree_paragraphs:
         file_name = _.split('\n')[0].split('__')[0]
@@ -249,6 +260,9 @@ async def qas_add_task_select_resource_type(update: Update, context: ContextType
                 InlineKeyboardButton(f"📺 电视节目", callback_data=f"qas_add_task_tv:{url_id}")
             ],
             [
+                InlineKeyboardButton(f"📺 电视节目(多季)", callback_data=f"qas_add_task_tv_multi_seasons:{url_id}")
+            ],
+            [
                 InlineKeyboardButton(f"🎬 电影", callback_data=f"qas_add_task_movie:{url_id}")
             ]
         ])
@@ -260,6 +274,35 @@ async def qas_add_task_select_tv(update: Update, context: ContextTypes.DEFAULT_T
     task_name = context.user_data['qas_add_task']['taskname']
     url_id = query.data.split(":")[1]
     context.user_data['qas_add_task']['shareurl'] = context.user_data['qas_add_task']['shareurl'][url_id]
+    tv_list = await TheMovieDB().search_tv(task_name, count=5)
+    if not tv_list:
+        await update.effective_message.reply_text("tmdb 查询不到相关信息，请重新运行添加任务指令并输入不同剧名")
+        return
+    for tv in tv_list:
+        tv_info_tmp_id = get_random_letter_number_id()
+        tv_name = tv.get('name')
+        tv_year = f"({tv.get('first_air_date').split('-')[0]})"
+        context.user_data['qas_add_task'][tv_info_tmp_id] = {
+            "resource_name": tv_name,
+            "resource_year": tv_year,
+            "resource_type": "tv"
+        }
+        await query.message.reply_photo(
+            photo=tv.get('photo_url'),
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"选择 {tv_name} {tv_year}", callback_data=f"qas_add_task_pattern_input:{tv_info_tmp_id}")
+                ]
+            ])
+        )
+
+async def qas_add_task_select_tv_multi_seasons(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    task_name = context.user_data['qas_add_task']['taskname']
+    url_id = query.data.split(":")[1]
+    context.user_data['qas_add_task']['shareurl'] = context.user_data['qas_add_task']['shareurl'][url_id]
+    context.user_data['qas_add_task'].update({'is_multi_seasons': True})
     tv_list = await TheMovieDB().search_tv(task_name, count=5)
     if not tv_list:
         await update.effective_message.reply_text("tmdb 查询不到相关信息，请重新运行添加任务指令并输入不同剧名")
@@ -504,50 +547,46 @@ async def qas_add_task_aria2_set_button(update: Update, context: ContextTypes.DE
 
 
 async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    qas_config = session.query(QuarkAutoDownloadConfig).filter(
-        QuarkAutoDownloadConfig.user_id == user.id
-    ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    async def qas_add_task(qas_instance, qas_config_instance, task_name: str, share_url: str, save_path: str, pattern: str, replace: str, aria2: bool, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        resp = await qas_instance.add_job(
+            host=qas_config_instance.host,
+            task_name=task_name,
+            share_url=share_url,
+            save_path=save_path,
+            pattern=pattern,
+            replace=replace
+        )
 
-    resp = await qas.add_job(
-        host=qas_config.host,
-        task_name=context.user_data['qas_add_task']['taskname'],
-        share_url=context.user_data['qas_add_task']['shareurl'],
-        save_path=context.user_data['qas_add_task']['savepath'],
-        pattern=context.user_data['qas_add_task']['pattern'],
-        replace=context.user_data['qas_add_task']['replace']
-    )
+        if resp.ok:
+            save_path = resp.json().get('data').get('savepath')
+            # 修改 aria2
+            data = await qas_instance.data(host=qas_config_instance.host)
+            for index, task in enumerate(data.get("tasklist", [])):
+                if task.get("savepath") == save_path:
+                    data["tasklist"][index]['ignore_extension'] = True
+                    if aria2 is False:
+                        data["tasklist"][index]["addition"]["aria2"]["auto_download"] = False
+                    else:
+                        data["tasklist"][index]["addition"]["aria2"]["auto_download"] = True
+                    break
+            await qas_instance.update(host=qas_config_instance.host, data=data)
+            message = f"""
+新增任务成功：
+📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
+📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
+🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
+🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
+🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
 
-    if resp.ok:
-        save_path = resp.json().get('data').get('savepath')
-        # 修改 aria2
-        data = await qas.data(host=qas_config.host)
-        for index, task in enumerate(data.get("tasklist", [])):
-            if task.get("savepath") == save_path:
-                data["tasklist"][index]['ignore_extension'] = True
-                if context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True) == False:
-                    data["tasklist"][index]["addition"]["aria2"]["auto_download"] = False
-                else:
-                    data["tasklist"][index]["addition"]["aria2"]["auto_download"] = True
-                break
-        await qas.update(host=qas_config.host, data=data)
-        message = f"""
-    新增任务成功：
-    📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
-    📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
-    🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
-    🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
-    🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
+📦 <b>扩展设置</b>：
+- 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+- 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
 
-    📦 <b>扩展设置</b>：
-    - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
-    - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
-
-    🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
-            """
-        await update.effective_message.reply_text(
-            text=message,
-            parse_mode="html",
+🌐 <a href="{qas_config_instance.host}"><b>你的 QAS 服务</b></a>
+                        """
+            await update.effective_message.reply_text(
+                text=message,
+                parse_mode="html",
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
@@ -562,14 +601,58 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
                         InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
                     ]
                 ])
-        )
+            )
 
-        context.user_data.pop("qas_add_task")
+        else:
+            await update.effective_message.reply_text(
+                text=f"添加任务{task_name}失败❌"
+            )
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    qas = QuarkAutoDownload(api_token=qas_config.api_token)
 
-    else:
+    if context.user_data['qas_add_task']['is_multi_seasons'] is True:
         await update.effective_message.reply_text(
-            text="添加任务失败"
+            text=f"Ai分类季数中，请稍等"
         )
+        seasons_fid = await qas.ai_classify_seasons(context.user_data['qas_add_task']['shareurl'])
+        await update.effective_message.reply_text(
+            text=f"""
+Ai识别季数完成，识别结果为：
+
+<code>{json.dumps(seasons_fid, indent=2)}</code>
+
+，即将创建任务"""
+        )
+        for season, fid in seasons_fid.items():
+            await qas_add_task(
+                qas_instance=qas,
+                qas_config_instance=qas_config,
+                task_name=context.user_data['qas_add_task']['taskname'] + f" ({season})",
+                share_url=context.user_data['qas_add_task']['quark_share_url_origin'] + fid,
+                save_path=os.path.join(context.user_data['qas_add_task']['savepath'], season),
+                pattern=context.user_data['qas_add_task']['pattern'],
+                replace=context.user_data['qas_add_task']['replace'],
+                aria2=context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True),
+                update=update,
+                context=context
+            )
+    else:
+        await qas_add_task(
+            qas_instance=qas,
+            qas_config_instance=qas_config,
+            task_name=context.user_data['qas_add_task']['taskname'],
+            share_url=context.user_data['qas_add_task']['shareurl'],
+            save_path=context.user_data['qas_add_task']['savepath'],
+            pattern=context.user_data['qas_add_task']['pattern'],
+            replace=context.user_data['qas_add_task']['replace'],
+            aria2=context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True),
+            update=update,
+            context=context
+        )
+
+    context.user_data.pop("qas_add_task")
 
     return ConversationHandler.END
 
@@ -1290,6 +1373,10 @@ handlers = [
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_tv),
             pattern=r"^qas_add_task_tv:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_tv_multi_seasons),
+            pattern=r"^qas_add_task_tv_multi_seasons:.*$"
     ),
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_movie),

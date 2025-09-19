@@ -86,6 +86,11 @@ AI_API_KEYS = {
     }
 }
 
+AI_PROVIDER = os.environ.get('AI_PROVIDER', 'kimi').lower()
+AI_HOST = AI_API_KEYS[AI_PROVIDER]['host']
+AI_API_KEY = AI_API_KEYS[AI_PROVIDER]['api_key']
+AI_MODEL = AI_API_KEYS[AI_PROVIDER]['model']
+
 
 if os.getenv("ENV") == "TEST":
     from config.test import *
