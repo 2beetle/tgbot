@@ -596,7 +596,7 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
             text=f"""
 Ai识别季数完成，识别结果为：
 
-<code>{json.dumps(extract_seasons, indent=2)}</code>
+<code>{json.dumps(extract_seasons, indent=2, ensure_ascii=False)}</code>
 
 ，即将创建任务""",
             parse_mode="html",
