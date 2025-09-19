@@ -297,33 +297,8 @@ async def qas_add_task_select_tv(update: Update, context: ContextTypes.DEFAULT_T
         )
 
 async def qas_add_task_select_tv_multi_seasons(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    query = update.callback_query
-    await query.answer()
-    task_name = context.user_data['qas_add_task']['taskname']
-    url_id = query.data.split(":")[1]
-    context.user_data['qas_add_task']['shareurl'] = context.user_data['qas_add_task']['shareurl'][url_id]
     context.user_data['qas_add_task'].update({'is_multi_seasons': True})
-    tv_list = await TheMovieDB().search_tv(task_name, count=5)
-    if not tv_list:
-        await update.effective_message.reply_text("tmdb 查询不到相关信息，请重新运行添加任务指令并输入不同剧名")
-        return
-    for tv in tv_list:
-        tv_info_tmp_id = get_random_letter_number_id()
-        tv_name = tv.get('name')
-        tv_year = f"({tv.get('first_air_date').split('-')[0]})"
-        context.user_data['qas_add_task'][tv_info_tmp_id] = {
-            "resource_name": tv_name,
-            "resource_year": tv_year,
-            "resource_type": "tv"
-        }
-        await query.message.reply_photo(
-            photo=tv.get('photo_url'),
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"选择 {tv_name} {tv_year}", callback_data=f"qas_add_task_pattern_input:{tv_info_tmp_id}")
-                ]
-            ])
-        )
+    await qas_add_task_select_tv(update, context, session, user)
 
 async def qas_add_task_select_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
