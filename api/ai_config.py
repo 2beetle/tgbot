@@ -34,14 +34,10 @@ DEFAULT_PROVIDER_CONFIGS = {
 }
 
 
-async def provider_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def provider_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """选择AI提供商"""
     query = update.callback_query
     await query.answer()
-
-    # 获取当前用户的所有AI配置
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     ai_configs = session.query(AIProviderConfig).filter_by(user_id=user.id).all()
 
@@ -82,21 +78,17 @@ async def provider_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message += "当前默认提供商: 未设置"
 
-    await query.message.reply_text(message, reply_markup=keyboard)
+    await update.effective_message.reply_text(message, reply_markup=keyboard)
     return PROVIDER_SELECT
 
 
-async def provider_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def provider_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """显示提供商详情和配置选项"""
     query = update.callback_query
     await query.answer()
 
     provider = query.data.replace("ai_provider_", "")
     context.user_data["ai_provider"] = provider
-
-    # 获取当前配置
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     config = session.query(AIProviderConfig).filter_by(
         user_id=user.id,
@@ -133,16 +125,13 @@ async def provider_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return PROVIDER_SELECT
 
 
-async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """处理API Key输入"""
     api_key = update.message.text.strip()
     provider = context.user_data.get("ai_provider")
 
     if api_key.lower() == 'skip':
         api_key = None
-
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     # 获取或创建配置
     config = session.query(AIProviderConfig).filter_by(
@@ -163,19 +152,16 @@ async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYP
     session.commit()
 
     await update.message.reply_text(f"✅ {provider.upper()} API Key 已更新")
-    return await show_provider_menu(update, context)
+    return await show_provider_menu(update, context, session, user)
 
 
-async def handle_host_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """处理Host输入"""
     host = update.message.text.strip()
     provider = context.user_data.get("ai_provider")
 
     if host.lower() == 'skip':
         host = None
-
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     # 获取或创建配置
     config = session.query(AIProviderConfig).filter_by(
@@ -198,19 +184,16 @@ async def handle_host_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.commit()
 
     await update.message.reply_text(f"✅ {provider.upper()} Host 已更新")
-    return await show_provider_menu(update, context)
+    return await show_provider_menu(update, context, session, user)
 
 
-async def handle_model_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_model_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """处理Model输入"""
     model = update.message.text.strip()
     provider = context.user_data.get("ai_provider")
 
     if model.lower() == 'skip':
         model = None
-
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     # 获取或创建配置
     config = session.query(AIProviderConfig).filter_by(
@@ -232,18 +215,16 @@ async def handle_model_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     session.commit()
 
-    await update.message.reply_text(f"✅ {provider.upper()} Model 已更新")
-    return await show_provider_menu(update, context)
+    await update.effective_message.reply_text(f"✅ {provider.upper()} Model 已更新")
+    return await show_provider_menu(update, context, session, user)
 
 
-async def delete_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def delete_config(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """删除配置"""
     query = update.callback_query
     await query.answer()
 
     provider = context.user_data.get("ai_provider")
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     config = session.query(AIProviderConfig).filter_by(
         user_id=user.id,
@@ -253,26 +234,23 @@ async def delete_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if config:
         session.delete(config)
         session.commit()
-        await query.message.reply_text(f"✅ {provider.upper()} 配置已删除")
+        await update.effective_message.reply_text(f"✅ {provider.upper()} 配置已删除")
     else:
-        await query.message.reply_text(f"❌ {provider.upper()} 配置不存在")
+        await update.effective_message.reply_text(f"❌ {provider.upper()} 配置不存在")
 
-    return await provider_select(update, context)
+    return await provider_select(update, context, session, user)
 
 
-async def set_default_provider_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def set_default_provider_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """设置默认提供商菜单"""
     query = update.callback_query
     await query.answer()
-
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     # 获取当前用户的所有配置
     configs = session.query(AIProviderConfig).filter_by(user_id=user.id).all()
 
     if not configs:
-        await query.message.reply_text("请先配置至少一个AI提供商")
+        await update.effective_message.reply_text("请先配置至少一个AI提供商")
         return PROVIDER_SELECT
 
     buttons = []
@@ -286,18 +264,16 @@ async def set_default_provider_menu(update: Update, context: ContextTypes.DEFAUL
     buttons.append([InlineKeyboardButton("返回", callback_data="ai_config_back")])
     keyboard = InlineKeyboardMarkup(buttons)
 
-    await query.message.reply_text("选择要设为默认的AI提供商:", reply_markup=keyboard)
+    await update.effective_message.reply_text("选择要设为默认的AI提供商:", reply_markup=keyboard)
     return PROVIDER_SELECT
 
 
-async def set_default_provider(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def set_default_provider(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """设置默认提供商"""
     query = update.callback_query
     await query.answer()
 
     provider = query.data.replace("set_default_", "")
-    session = context.bot_data['session']
-    user = context.user_data.get('user')
 
     # 先将所有提供商设为非默认
     session.query(AIProviderConfig).filter_by(user_id=user.id).update({"is_default": False})
@@ -311,14 +287,14 @@ async def set_default_provider(update: Update, context: ContextTypes.DEFAULT_TYP
     if config:
         config.is_default = True
         session.commit()
-        await query.message.reply_text(f"✅ 默认AI提供商已设置为: {provider.upper()}")
+        await update.effective_message.reply_text(f"✅ 默认AI提供商已设置为: {provider.upper()}")
     else:
-        await query.message.reply_text(f"❌ {provider.upper()} 配置不存在")
+        await update.effective_message.reply_text(f"❌ {provider.upper()} 配置不存在")
 
-    return await provider_select(update, context)
+    return await provider_select(update, context, session, user)
 
 
-async def show_provider_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_provider_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """显示提供商配置菜单"""
     provider = context.user_data.get("ai_provider")
 
@@ -333,25 +309,25 @@ async def show_provider_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = InlineKeyboardMarkup(buttons)
 
     if update.callback_query:
-        await update.callback_query.message.reply_text(f"{provider.upper()} 配置选项:", reply_markup=keyboard)
+        await update.effective_message.reply_text(f"{provider.upper()} 配置选项:", reply_markup=keyboard)
     else:
         await update.message.reply_text(f"{provider.upper()} 配置选项:", reply_markup=keyboard)
 
     return PROVIDER_SELECT
 
 
-async def handle_api_key_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_api_key_config(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """开始配置API Key"""
     query = update.callback_query
     await query.answer()
 
     provider = context.user_data.get("ai_provider")
 
-    await query.message.reply_text(f"请输入 {provider.upper()} 的API Key (或输入 'skip' 跳过):")
+    await update.effective_message.reply_text(f"请输入 {provider.upper()} 的API Key (或输入 'skip' 跳过):")
     return API_KEY_INPUT
 
 
-async def handle_host_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_host_config(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """开始配置Host"""
     query = update.callback_query
     await query.answer()
@@ -359,11 +335,11 @@ async def handle_host_config(update: Update, context: ContextTypes.DEFAULT_TYPE)
     provider = context.user_data.get("ai_provider")
     default_info = DEFAULT_PROVIDER_CONFIGS.get(provider, {})
 
-    await query.message.reply_text(f"请输入 {provider.upper()} 的Host (默认: {default_info.get('host', '无')})，或输入 'skip' 使用默认:")
+    await update.effective_message.reply_text(f"请输入 {provider.upper()} 的Host (默认: {default_info.get('host', '无')})，或输入 'skip' 使用默认:")
     return HOST_INPUT
 
 
-async def handle_model_config(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_model_config(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """开始配置Model"""
     query = update.callback_query
     await query.answer()
@@ -371,7 +347,7 @@ async def handle_model_config(update: Update, context: ContextTypes.DEFAULT_TYPE
     provider = context.user_data.get("ai_provider")
     default_info = DEFAULT_PROVIDER_CONFIGS.get(provider, {})
 
-    await query.message.reply_text(f"请输入 {provider.upper()} 的Model (默认: {default_info.get('model', '无')})，或输入 'skip' 使用默认:")
+    await update.effective_message.reply_text(f"请输入 {provider.upper()} 的Model (默认: {default_info.get('model', '无')})，或输入 'skip' 使用默认:")
     return MODEL_INPUT
 
 
@@ -428,18 +404,18 @@ handlers = [
         ],
         states={
             PROVIDER_SELECT: [
-                CallbackQueryHandler(provider_detail, pattern=r"^ai_provider_"),
-                CallbackQueryHandler(set_default_provider_menu, pattern=r"^ai_set_default_provider"),
-                CallbackQueryHandler(set_default_provider, pattern=r"^set_default_"),
-                CallbackQueryHandler(lambda u, c: provider_select(u, c), pattern=r"^ai_config_back$"),
-                CallbackQueryHandler(delete_config, pattern=r"^ai_config_delete$"),
-                CallbackQueryHandler(handle_api_key_config, pattern=r"^ai_config_api_key$"),
-                CallbackQueryHandler(handle_host_config, pattern=r"^ai_config_host$"),
-                CallbackQueryHandler(handle_model_config, pattern=r"^ai_config_model$"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(provider_detail), pattern=r"^ai_provider_"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(set_default_provider_menu), pattern=r"^ai_set_default_provider"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(set_default_provider), pattern=r"^set_default_"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(provider_select), pattern=r"^ai_config_back$"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(delete_config), pattern=r"^ai_config_delete$"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_api_key_config), pattern=r"^ai_config_api_key$"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_host_config), pattern=r"^ai_config_host$"),
+                CallbackQueryHandler(depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_model_config), pattern=r"^ai_config_model$"),
             ],
-            API_KEY_INPUT: [MessageHandler(filters.TEXT, ~filters.COMMAND, handle_api_key_input, block=False)],
-            HOST_INPUT: [MessageHandler(filters.TEXT, ~filters.COMMAND, handle_host_input, block=False)],
-            MODEL_INPUT: [MessageHandler(filters.TEXT, ~filters.COMMAND, handle_model_input, block=False)],
+            API_KEY_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_api_key_input))],
+            HOST_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_host_input))],
+            MODEL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(handle_model_input))],
         },
         fallbacks=[
             CallbackQueryHandler(lambda u, c: ConversationHandler.END, pattern=r"^cancel_conversation$")

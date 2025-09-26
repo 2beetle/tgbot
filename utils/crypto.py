@@ -21,6 +21,7 @@ class CryptoManager:
 
         if salt is None:
             salt = os.environ.get('CRYPTO_SALT', os.urandom(16)).encode() if isinstance(os.environ.get('CRYPTO_SALT'), str) else os.urandom(16)
+            print(f'CRYPTO_SALT {salt}')
 
         self.salt = salt
         self.key = self._derive_key(password.encode(), salt)

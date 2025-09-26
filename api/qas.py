@@ -98,7 +98,7 @@ async def movie_save_path_prefix_set(update: Update, context: ContextTypes.DEFAU
         reply_markup=InlineKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton(f"默认 => .*.(mp4|mkv)", callback_data=f"qas_pattern_input.*.(mp4|mkv)")
+                    InlineKeyboardButton(f"默认 => .*.(mp4|mkv|ass|srt)", callback_data=f"qas_pattern_input.*.(mp4|mkv|ass|srt)")
                 ],
                 [
                     InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
