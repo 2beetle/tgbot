@@ -11,6 +11,7 @@ from db.models.user import *
 from db.models.log import *
 from db.models.qas import *
 from db.models.emby import *
+from db.models.ai_config import *
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
