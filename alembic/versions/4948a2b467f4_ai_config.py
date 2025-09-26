@@ -1,8 +1,8 @@
 """ai_config
 
-Revision ID: 8f6b5bebe1c0
+Revision ID: 4948a2b467f4
 Revises: 032d499105b7
-Create Date: 2025-09-26 12:28:41.702132+00:00
+Create Date: 2025-09-26 15:16:19.996199+00:00
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '8f6b5bebe1c0'
+revision: str = '4948a2b467f4'
 down_revision: Union[str, Sequence[str], None] = '032d499105b7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,8 +26,8 @@ def upgrade() -> None:
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('provider_name', sa.String(length=32), nullable=False),
     sa.Column('api_key', sa.String(length=512), nullable=False),
-    sa.Column('host', sa.String(length=256), nullable=True),
-    sa.Column('model', sa.String(length=128), nullable=True),
+    sa.Column('host', sa.String(length=256), nullable=False),
+    sa.Column('model', sa.String(length=128), nullable=False),
     sa.Column('is_default', sa.Boolean(), server_default='0', nullable=False),
     sa.Column('extra_config', sa.String(length=1024), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),

@@ -17,8 +17,8 @@ class AIProviderConfig(Base, CreateTimeUpdateTimeBase):
 
     # API配置（加密存储）
     api_key = Column(String(512), nullable=False)
-    host = Column(String(256), nullable=True)
-    model = Column(String(128), nullable=True)
+    host = Column(String(256), nullable=False)
+    model = Column(String(128), nullable=False)
 
     # 是否为默认提供商
     is_default = Column(Boolean, nullable=False, default=False, server_default='0')

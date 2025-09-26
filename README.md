@@ -26,6 +26,7 @@
 - **智能参数生成**: AI 自动生成下载任务的 pattern 和 replace 规则
 - **季数分类**: AI 自动识别和分类电视剧季数
 - **多 AI 提供商**: 支持 OpenAI、DeepSeek、Kimi 等多个 AI 服务
+- **动态配置**: 通过 `/upsert_configuration` 命令配置，每个用户独立设置 AI 服务
 
 ### 👥 用户管理
 - **角色权限**: 支持 Owner、Admin、User 三级权限管理
@@ -61,20 +62,6 @@
 | `TMDB_API_KEY` | The Movie Database API Key | `your_tmdb_api_key` | ❌ |
 | `TMDB_POSTER_BASE_URL` | TMDB 海报基础 URL（可选） | `https://image.tmdb.org/t/p/original` | ❌ |
 
-### AI 服务配置（可选）
-
-| 变量名 | 说明 | 示例值 | 必需 |
-|--------|------|--------|:----:|
-| `AI_PROVIDER` | AI 服务提供商（可选: openai, deepseek, kimi, 默认: kimi） | `kimi` | ❌ |
-| `OPENAI_HOST` | OpenAI API 主机地址 | `https://api.openai.com` | ❌ |
-| `OPENAI_API_KEY` | OpenAI API Key | `your_openai_api_key` | ❌ |
-| `OPENAI_MODEL` | OpenAI 模型名称 | `gpt-3.5-turbo` | ❌ |
-| `DEEPSEEK_HOST` | DeepSeek API 主机地址 | `https://api.deepseek.com` | ❌ |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key | `your_deepseek_api_key` | ❌ |
-| `DEEPSEEK_MODEL` | DeepSeek 模型名称 | `deepseek-chat` | ❌ |
-| `KIMI_HOST` | Kimi API 主机地址 | `https://api.moonshot.cn` | ❌ |
-| `KIMI_API_KEY` | Kimi API Key | `your_kimi_api_key` | ❌ |
-| `KIMI_MODEL` | Kimi 模型名称 | `moonshot-v1-8k` | ❌ |
 
 ### PanSou 配置（可选）
 
@@ -97,6 +84,12 @@
 通过 `/upsert_configuration` 命令，每个 Telegram 用户可以配置自己的个人服务连接，这些配置存储在数据库中，每个用户相互独立。
 
 #### 可配置的服务
+
+**AI 服务配置：**
+- **支持提供商**: OpenAI、DeepSeek、Kimi
+- **必需字段**: API Key、Host、Model（所有字段都必须显式配置）
+- **配置方式**: 通过 `/upsert_configuration` 命令动态配置
+- **特点**: 每个用户独立配置，加密存储，无默认配置
 
 **QAS (Quark Auto Save) 配置：**
 - **host**: QAS 服务主机地址
@@ -194,7 +187,7 @@ python main.py
 - `/emby_list_notification` - 列出 Emby 通知配置
 
 #### 配置管理
-- `/upsert_configuration` - 配置个人服务连接（QAS、Emby）
+- `/upsert_configuration` - 配置个人服务连接（QAS、Emby、AI 服务）
 
 #### 任务调度 (Admin+)
 - `/remind {时间} {提醒内容}` - 设置提醒

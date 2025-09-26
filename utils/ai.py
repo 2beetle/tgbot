@@ -6,22 +6,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# 默认配置（备用）
-DEFAULT_AI_CONFIG = {
-    'openai': {
-        'host': 'https://api.openai.com/v1/chat/completions',
-        'model': 'gpt-3.5-turbo'
-    },
-    'deepseek': {
-        'host': 'https://api.deepseek.com/v1/chat/completions',
-        'model': 'deepseek-chat'
-    },
-    'kimi': {
-        'host': 'https://api.moonshot.cn/v1/chat/completions',
-        'model': 'moonshot-v1-8k'
-    }
-}
-
 def get_ai_config_from_db(session=None, user_id: int = None) -> Optional[dict]:
     """从数据库获取AI配置（适配新的表结构）"""
     if not session or not user_id:
@@ -35,7 +19,7 @@ def get_ai_config_from_db(session=None, user_id: int = None) -> Optional[dict]:
         return None
 
 def get_ai_config(session=None, user_id: int = None, provider: str = None) -> dict:
-    """获取AI配置（只读数据库配置）"""
+    """获取AI配置（只读数据库配置，不再使用默认配置）"""
     config = None
 
     # 从数据库获取配置
@@ -54,16 +38,15 @@ def get_ai_config(session=None, user_id: int = None, provider: str = None) -> di
                     config = db_config[default_provider].copy()
                     config['provider'] = default_provider
 
-    # 如果没有配置，使用默认配置
+    # 如果没有配置，返回空配置
     if not config:
-        if provider and provider in DEFAULT_AI_CONFIG:
-            config = DEFAULT_AI_CONFIG[provider].copy()
-            config['provider'] = provider
-            config['api_key'] = None
-        else:
-            config = DEFAULT_AI_CONFIG['kimi'].copy()
-            config['provider'] = 'kimi'
-            config['api_key'] = None
+        config = {
+            'provider': provider or 'kimi',
+            'api_key': None,
+            'host': '',
+            'model': '',
+            'is_default': False
+        }
 
     return config
 
