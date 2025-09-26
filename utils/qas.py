@@ -209,7 +209,7 @@ class QuarkAutoDownload:
             result.append(paragraph)
         return result
 
-    async def ai_generate_params(self, url: str) -> dict:
+    async def ai_generate_params(self, url: str, session, user_id) -> dict:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
         files = [
@@ -245,9 +245,8 @@ class QuarkAutoDownload:
         ai_analysis = await openapi_chat(
             role="你是一个编写正则表达式的专家，善于从元素列表中通过编写正则提取到想要的元素",
             prompt=prompt,
-            host=AI_HOST,
-            api_key=AI_API_KEY,
-            model=AI_MODEL,
+            session=session,
+            user_id=user_id
         )
 
         # 清理可能的非JSON内容
@@ -275,7 +274,7 @@ class QuarkAutoDownload:
         else:
             return resp.text
 
-    async def ai_classify_seasons(self, url: str) -> Tuple[dict, dict]:
+    async def ai_classify_seasons(self, url: str, session, user_id) -> Tuple[dict, dict]:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=True)
         dirname_fid_map = dict()
@@ -331,9 +330,8 @@ class QuarkAutoDownload:
         ai_analysis = await openapi_chat(
             role="你是一个影视剧季数分类专家，善于从多个文件夹列表中找到和影视剧季数相关的文件夹",
             prompt=prompt,
-            host=AI_HOST,
-            api_key=AI_API_KEY,
-            model=AI_MODEL,
+            session=session,
+            user_id=user_id
         )
 
         # 清理可能的非JSON内容

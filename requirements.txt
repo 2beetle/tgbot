@@ -7,3 +7,4 @@ tmdbv3api
 apscheduler
 pytz
 aiohttp
+cryptography

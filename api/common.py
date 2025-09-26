@@ -127,9 +127,8 @@ EXAMPLE JSON OUTPUT:
     ai_analysis = await openapi_chat(
         role="你是一个信息提取专家，能够根据要求准确地提取到所需内容",
         prompt=prompt,
-        host=AI_HOST,
-        api_key=AI_API_KEY,
-        model=AI_MODEL,
+        session=session,
+        user_id=user.id
     )
 
     # 清理可能的非JSON内容
@@ -194,7 +193,8 @@ EXAMPLE JSON OUTPUT:
 def upsert_configuration_build_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton("QAS", callback_data=f"upsert_qas_configuration"),
-        InlineKeyboardButton("Emby", callback_data=f"upsert_emby_configuration")
+        InlineKeyboardButton("Emby", callback_data=f"upsert_emby_configuration"),
+        InlineKeyboardButton("AI", callback_data=f"upsert_ai_configuration")
     ]
     return InlineKeyboardMarkup([buttons]) if buttons else None
 

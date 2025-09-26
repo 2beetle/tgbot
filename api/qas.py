@@ -19,8 +19,20 @@ from utils.command_middleware import depends
 from utils.common import get_random_letter_number_id
 from utils.qas import QuarkAutoDownload
 from utils.the_movie_db import TheMovieDB
+from utils.crypto import encrypt_sensitive_data, decrypt_sensitive_data
 
 logger = logging.getLogger(__name__)
+
+
+def get_decrypted_api_token(qas_config):
+    """从QAS配置中获取解密的API令牌"""
+    if not qas_config or not qas_config.api_token:
+        return None
+    try:
+        return decrypt_sensitive_data(qas_config.api_token)
+    except Exception as e:
+        logger.error(f"解密API令牌失败: {str(e)}")
+        return None
 
 HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
 
@@ -160,11 +172,14 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
     pattern = context.user_data["configuration"]["qas"]["pattern"]
     replace = context.user_data["configuration"]["qas"]["replace"]
 
+    # 加密敏感数据
+    encrypted_api_token = encrypt_sensitive_data(api_token)
+
     count = session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).count()
     if count > 0:
         session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).update({
             QuarkAutoDownloadConfig.host: host,
-            QuarkAutoDownloadConfig.api_token: api_token,
+            QuarkAutoDownloadConfig.api_token: encrypted_api_token,
             QuarkAutoDownloadConfig.save_path_prefix: save_path_prefix,
             QuarkAutoDownloadConfig.movie_save_path_prefix: movie_save_path_prefix,
             QuarkAutoDownloadConfig.pattern: pattern,
@@ -174,7 +189,7 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
         session.add(
             QuarkAutoDownloadConfig(
                 host=host,
-                api_token=api_token,
+                api_token=encrypted_api_token,
                 save_path_prefix=save_path_prefix,
                 movie_save_path_prefix=movie_save_path_prefix,
                 pattern=pattern,
@@ -230,7 +245,11 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
         }
     })
 
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     fid_files = await qas.get_fid_files(quark_share_url, True)
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
     for _ in tree_paragraphs:
@@ -353,8 +372,12 @@ async def qas_add_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE,
         qas_config = session.query(QuarkAutoDownloadConfig).filter(
             QuarkAutoDownloadConfig.user_id == user.id
         ).first()
-        qas = QuarkAutoDownload(api_token=qas_config.api_token)
-        params = await qas.ai_generate_params(context.user_data['qas_add_task']['shareurl'])
+        api_token = get_decrypted_api_token(qas_config)
+        if not api_token:
+            await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+            return
+        qas = QuarkAutoDownload(api_token=api_token)
+        params = await qas.ai_generate_params(context.user_data['qas_add_task']['shareurl'], session=session, user_id=user.id)
         context.user_data['qas_add_task']['ai_params'] = params
 
         await update.effective_message.reply_text(
@@ -585,13 +608,17 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
 
     if context.user_data['qas_add_task']['is_multi_seasons'] is True:
         await update.effective_message.reply_text(
             text=f"Ai分类季数中，请稍等"
         )
-        seasons_fid, extract_seasons = await qas.ai_classify_seasons(context.user_data['qas_add_task']['shareurl'])
+        seasons_fid, extract_seasons = await qas.ai_classify_seasons(context.user_data['qas_add_task']['shareurl'], session=session, user_id=user.id)
         await update.effective_message.reply_text(
             text=f"""
 Ai识别季数完成，识别结果为：
@@ -650,7 +677,11 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
     else:
         task_name = None
 
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     task_list = [task for task in data.get("tasklist", []) if not (task_name and not is_subsequence(task_name, task["taskname"]))]
 
@@ -709,7 +740,11 @@ async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
     if not qas_config:
         await update.effective_message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
 
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     task_info = data.get("tasklist", [])[task_id]
     task_info.update({'id': task_id})
@@ -742,7 +777,11 @@ async def qas_task_update_select_default_url_set_text(update: Update, context: C
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
 
     fid_files = await qas.get_fid_files(quark_share_url)
     if not fid_files:
@@ -794,7 +833,11 @@ async def qas_task_update_url_ask_pattern(update: Update, context: ContextTypes.
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
 
     session.add(
         OperationLog(
@@ -805,7 +848,7 @@ async def qas_task_update_url_ask_pattern(update: Update, context: ContextTypes.
     )
     session.commit()
 
-    params = await qas.ai_generate_params(context.user_data['qas_update_task']['shareurl'])
+    params = await qas.ai_generate_params(context.user_data['qas_update_task']['shareurl'], session=session, user_id=user.id)
     context.user_data['qas_update_task']['ai_params'] = params
 
     await update.effective_message.reply_text(
@@ -963,7 +1006,11 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
 
     for index, task in enumerate(data.get("tasklist", [])):
@@ -1027,7 +1074,11 @@ async def qas_delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
         await update.message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
     qas_task_id = context.args[0]
     context.user_data['qas_delete_task_id'] = qas_task_id
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     for index, task in enumerate(data.get("tasklist", [])):
         if index == int(qas_task_id):
@@ -1058,7 +1109,11 @@ async def qas_delete_task_confirm_handler(update: Update, context: ContextTypes.
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     task_name = data['tasklist'][qas_deleted_task_id]['taskname']
     data['tasklist'].pop(int(qas_deleted_task_id))
@@ -1086,7 +1141,11 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
     await update.effective_message.reply_text(
         text="任务运行中，请稍后..."
     )
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     if len(context.args) < 1:
         task_list = data["tasklist"]
@@ -1119,7 +1178,11 @@ async def qas_view_task_regex(update: Update, context: ContextTypes.DEFAULT_TYPE
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
     ).first()
-    qas = QuarkAutoDownload(api_token=qas_config.api_token)
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     index = int(context.args[0])
 

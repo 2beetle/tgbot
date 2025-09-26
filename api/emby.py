@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 from sqlalchemy.testing.suite.test_reflection import metadata
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
@@ -11,8 +13,27 @@ from db.models.emby import EmbyConfig
 from db.models.user import User
 from utils.command_middleware import depends
 from utils.emby import Emby
+from utils.crypto import encrypt_sensitive_data, decrypt_sensitive_data
 
 HOST_SET, API_TOKEN_SET, USERNAME_SET, PWD_SET = range(4)
+
+
+logger = logging.getLogger(__name__)
+
+
+def get_decrypted_emby_credentials(emby_config):
+    """从Emby配置中获取解密的凭据"""
+    if not emby_config:
+        return None, None, None
+
+    try:
+        api_token = decrypt_sensitive_data(emby_config.api_token) if emby_config.api_token else None
+        username = emby_config.username  # 用户名不加密
+        password = decrypt_sensitive_data(emby_config.password) if emby_config.password else None
+        return api_token, username, password
+    except Exception as e:
+        logger.error(f"解密Emby凭据失败: {str(e)}")
+        return None, None, None
 
 @command(name='emby_list_resource', description="列出 emby 媒体资源", args="{resource name}")
 async def emby_list_resource(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -29,7 +50,12 @@ async def emby_list_resource(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
     resource_name = ' '.join(context.args)
 
-    emby = Emby(host=emby_config.host, token=emby_config.api_token)
+    api_token, username, password = get_decrypted_emby_credentials(emby_config)
+    if not api_token:
+        await update.message.reply_text("无法解密Emby API令牌，请重新配置")
+        return
+
+    emby = Emby(host=emby_config.host, token=api_token)
     data = await emby.list_resource(resource_name)
     if data['Items']:
         for item in data['Items']:
@@ -62,8 +88,13 @@ async def emby_list_notification(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("尚未添加 Emby 配置，请使用 /upsert_configuration 命令进行配置")
         return
 
-    emby = Emby(host=emby_config.host, token=emby_config.api_token)
-    access_token = await emby.get_access_token(emby_config.username, emby_config.password)
+    api_token, username, password = get_decrypted_emby_credentials(emby_config)
+    if not api_token or not username or not password:
+        await update.message.reply_text("无法解密Emby凭据，请重新配置")
+        return
+
+    emby = Emby(host=emby_config.host, token=api_token)
+    access_token = await emby.get_access_token(username, password)
     data = await emby.list_notification(access_token)
     if data:
         for item in data:
@@ -92,7 +123,12 @@ async def emby_refresh_library(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("尚未添加 Emby 配置，请使用 /upsert_configuration 命令进行配置")
         return
 
-    emby = Emby(host=emby_config.host, token=emby_config.api_token)
+    api_token, username, password = get_decrypted_emby_credentials(emby_config)
+    if not api_token:
+        await update.message.reply_text("无法解密Emby API令牌，请重新配置")
+        return
+
+    emby = Emby(host=emby_config.host, token=api_token)
     resp = await emby.refresh_library(int(item_id))
     if resp.ok:
         await update.effective_message.reply_text("刷新媒体库成功")
@@ -116,8 +152,13 @@ async def emby_notification_set(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("尚未添加 Emby 配置，请使用 /upsert_configuration 命令进行配置")
         return
 
-    emby = Emby(host=emby_config.host, token=emby_config.api_token)
-    access_token = await emby.get_access_token(emby_config.username, emby_config.password)
+    api_token, username, password = get_decrypted_emby_credentials(emby_config)
+    if not api_token or not username or not password:
+        await update.effective_message.reply_text("无法解密Emby凭据，请重新配置")
+        return
+
+    emby = Emby(host=emby_config.host, token=api_token)
+    access_token = await emby.get_access_token(username, password)
     resp = await emby.update_notification(access_token, notification_id, event_id, operation)
     if resp.ok:
         await update.effective_message.reply_text("更新通知配置成功")
@@ -189,22 +230,26 @@ async def upsert_emby_configuration_finish(update: Update, context: ContextTypes
     username = context.user_data["configuration"]["emby"]["username"]
     password = context.user_data["configuration"]["emby"]["pwd"]
 
+    # 加密敏感数据
+    encrypted_api_token = encrypt_sensitive_data(api_token)
+    encrypted_password = encrypt_sensitive_data(password)
+
     count = session.query(EmbyConfig).filter(EmbyConfig.user_id == user.id).count()
     if count > 0:
         session.query(EmbyConfig).filter(EmbyConfig.user_id == user.id).update({
             EmbyConfig.host: host,
-            EmbyConfig.api_token: api_token,
+            EmbyConfig.api_token: encrypted_api_token,
             EmbyConfig.username: username,
-            EmbyConfig.password: password,
+            EmbyConfig.password: encrypted_password,
         })
     else:
         session.add(
             EmbyConfig(
                 host=host,
-                api_token=api_token,
+                api_token=encrypted_api_token,
                 user_id=user.id,
                 username=username,
-                password=password,
+                password=encrypted_password,
             )
         )
     session.commit()
