@@ -27,6 +27,5 @@ class AIProviderConfig(Base, CreateTimeUpdateTimeBase):
     extra_config = Column(String(1024), nullable=True)
 
     __table_args__ = (
-        # 每个用户对每个提供商只能有一条配置
         {'sqlite_autoincrement': True},
     )
