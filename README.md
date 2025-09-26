@@ -53,6 +53,8 @@
 | 变量名 | 说明 | 示例值 | 必需 |
 |--------|------|--------|:----:|
 | `TG_BOT_TOKEN` | Telegram Bot Token | `123456789:ABCdefGHIjklMNOpqrsTUVwxyz` | ✅ |
+| `CRYPTO_PASSWORD` | 加密密码（用于敏感数据加密，建议16位以上） | `your_strong_password_123` | ✅ |
+| `CRYPTO_SALT` | 加密盐值（用于敏感数据加密，建议16位以上） | `your_random_salt_value_456` | ✅ |
 | `DATA_PATH` | 数据库路径（可选，默认在 db/data/ 目录下） | `/path/to/data` | ❌ |
 
 ### TMDB 配置
@@ -144,8 +146,15 @@ pip install -r requirements.txt
 
 ```bash
 TG_BOT_TOKEN=your_telegram_bot_token
+CRYPTO_PASSWORD=your_strong_password_at_least_16_chars
+CRYPTO_SALT=your_random_salt_at_least_16_chars
 TMDB_API_KEY=your_tmdb_api_key
 ```
+
+**重要说明：**
+- `CRYPTO_PASSWORD` 和 `CRYPTO_SALT` 用于敏感数据加密，必须配置且长度至少16位
+- 建议使用强密码和随机字符串，确保系统安全性
+- 这些加密密钥一旦设置，后续修改会影响已加密的数据
 
 ### 4. 初始化数据库
 

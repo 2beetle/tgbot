@@ -12,6 +12,20 @@ TG_DB_PATH = os.path.join(DATA_PATH, 'tgbot.db')
 
 TG_BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
 
+# 加密配置 - 必需的环境变量
+CRYPTO_PASSWORD = os.getenv('CRYPTO_PASSWORD')
+CRYPTO_SALT = os.getenv('CRYPTO_SALT')
+
+# 验证必需的加密环境变量
+if not CRYPTO_PASSWORD:
+    raise ValueError("环境变量 CRYPTO_PASSWORD 未配置，必须设置加密密码")
+if not CRYPTO_SALT:
+    raise ValueError("环境变量 CRYPTO_SALT 未配置，必须设置加密盐值")
+if len(CRYPTO_PASSWORD) < 16:
+    raise ValueError("CRYPTO_PASSWORD 长度必须至少16位，建议更长的强密码")
+if len(CRYPTO_SALT) < 16:
+    raise ValueError("CRYPTO_SALT 长度必须至少16位，建议更长的随机字符串")
+
 OWNER_ROLE_NAME = 'owner'
 ADMIN_ROLE_NAME = 'admin'
 USER_ROLE_NAME = 'user'
