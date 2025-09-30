@@ -230,6 +230,17 @@ tgbot/
 - 定期更新依赖包以确保安全性
 - 限制机器人的访问权限，避免未授权使用
 
+## 🙏 鸣谢
+
+本项目在开发过程中受益于以下开源项目：
+
+- **[python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)** - Telegram Bot API框架，为整个项目提供了基础的Bot框架支持
+- **[quark-auto-save](https://github.com/Cp0204/quark-auto-save)** - 夸克网盘自动下载工具，为QAS功能集成提供了核心支持
+- **[pansou](https://github.com/fish2018/pansou)** - PanSou搜索服务，提供了强大的网盘资源搜索能力
+- **[cloudsaver](https://github.com/jiangrui1994/cloudsaver)** - CloudSaver云存储管理工具，为云存储资源管理提供了便利
+
+感谢这些项目的开发者为开源社区做出的贡献！
+
 ## 📝 许可证
 
 本项目采用 Apache License 2.0 - 详见 LICENSE 文件
