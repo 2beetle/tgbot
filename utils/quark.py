@@ -54,7 +54,12 @@ class Quark:
             if not stoken_resp.ok:
                 logger.error(f'Failed to get quark stoken {url}, error: {await stoken_resp.text()}')
                 return quark_id, None, pdir_fid, json_data.get('message', '状态未知')
-            stoken = json_data['data']['stoken']
+
+            try:
+                stoken = json_data['data']['stoken']
+            except Exception as e:
+                logger.error(f'Failed to get quark stoken {url}, error: {e}')
+                return quark_id, None, pdir_fid, '状态未知'
             return quark_id, stoken, pdir_fid, None
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
