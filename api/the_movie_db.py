@@ -124,7 +124,7 @@ async def tmdb_search_tv(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
     logger.info(f"TMDB search tv: {search_content} page: {page}")
     logger.info(f"total_pages: {search.get('total_pages')}")
 
-    for index, res in enumerate(search):
+    for index, res in enumerate(search.get('results', [])):
         detail = tv.details(res.get('id'))
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
@@ -191,7 +191,7 @@ async def tmdb_search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     logger.info(f"TMDB search movie: {search_content} page: {page}")
     logger.info(f"total_pages: {search.get('total_pages')}")
 
-    for index, res in enumerate(search):
+    for index, res in enumerate(search.get('results', [])):
         detail = movie.details(res.get('id'))
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
