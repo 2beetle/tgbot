@@ -489,6 +489,9 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
     if not api_token:
         await update.message.reply_text("无法解密QAS API令牌，请重新配置")
         return
+
+    await update.message.reply_text(text='解析分享链接中，请稍后')
+
     qas = QuarkAutoDownload(api_token=api_token)
     fid_files = await qas.get_fid_files(quark_share_url, True)
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
@@ -1107,6 +1110,8 @@ async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DE
     if not update.message:
         return
 
+    await update.message.reply_text(text='解析分享链接中，请稍后')
+
     quark_share_url = update.message.text
     if not quark_share_url.endswith('/'):
         quark_share_url += '/'
@@ -1306,7 +1311,26 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
 
     qas = QuarkAutoDownload(api_token=api_token)
-    success = await qas.update_task(host=qas_config.host, task_id=task_id, task_data=update_data)
+
+    data = await qas.data(host=qas_config.host)
+
+    for index, task in enumerate(data.get("tasklist", [])):
+        if index == int(task_id):
+            for k, v in update_data.items():
+                data['tasklist'][index][k] = v
+            if 'id' in data['tasklist'][index]:
+                data['tasklist'][index].pop('id')
+            if 'ai_params' in data['tasklist'][index]:
+                data['tasklist'][index].pop('ai_params')
+            if 'shareurl_ban' in data['tasklist'][index]:
+                data['tasklist'][index].pop('shareurl_ban')
+
+            data['tasklist'][index]["addition"]["aria2"]["auto_download"] = update_data["addition"]["aria2"]["auto_download"] if update_data["addition"]["aria2"]["auto_download"] else False
+
+            data['tasklist'][index]['startfid'] = ''
+            data["tasklist"][index]['ignore_extension'] = True
+            break
+    success = await qas.update(host=qas_config.host, data=data)
 
     if success:
         await update.effective_message.reply_text("✅ 任务更新成功！")
@@ -1553,67 +1577,67 @@ async def qas_update_task_aria2_set_button(update: Update, context: ContextTypes
     return await qas_task_update_finish(update, context, session, user)
 
 
-async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    task_in_update = context.user_data['qas_update_task']
-    qas_config = session.query(QuarkAutoDownloadConfig).filter(
-        QuarkAutoDownloadConfig.user_id == user.id
-    ).first()
-    api_token = get_decrypted_api_token(qas_config)
-    if not api_token:
-        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
-        return
-    qas = QuarkAutoDownload(api_token=api_token)
-    data = await qas.data(host=qas_config.host)
-
-    for index, task in enumerate(data.get("tasklist", [])):
-        if index == int(task_in_update.get("id")):
-            for k, v in task_in_update.items():
-                data['tasklist'][index][k] = v
-            if 'id' in data['tasklist'][index]:
-                data['tasklist'][index].pop('id')
-            if 'ai_params' in data['tasklist'][index]:
-                data['tasklist'][index].pop('ai_params')
-            if 'shareurl_ban' in data['tasklist'][index]:
-                data['tasklist'][index].pop('shareurl_ban')
-            data['tasklist'][index]['startfid'] = ''
-            data["tasklist"][index]['ignore_extension'] = True
-            break
-    await qas.update(host=qas_config.host, data=data)
-    message = f"""
-    更新任务成功：
-    📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
-    📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
-    🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
-    🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
-    🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
-
-    📦 <b>扩展设置</b>：
-    - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
-    - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
-
-    🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
-    """
-    await update.effective_message.reply_text(
-        text=message,
-        parse_mode="html",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
-            ]
-        ])
-    )
-
-    context.user_data.pop("qas_update_task")
-    return ConversationHandler.END
+# async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+#     task_in_update = context.user_data['qas_update_task']
+#     qas_config = session.query(QuarkAutoDownloadConfig).filter(
+#         QuarkAutoDownloadConfig.user_id == user.id
+#     ).first()
+#     api_token = get_decrypted_api_token(qas_config)
+#     if not api_token:
+#         await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+#         return
+#     qas = QuarkAutoDownload(api_token=api_token)
+#     data = await qas.data(host=qas_config.host)
+#
+#     for index, task in enumerate(data.get("tasklist", [])):
+#         if index == int(task_in_update.get("id")):
+#             for k, v in task_in_update.items():
+#                 data['tasklist'][index][k] = v
+#             if 'id' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('id')
+#             if 'ai_params' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('ai_params')
+#             if 'shareurl_ban' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('shareurl_ban')
+#             data['tasklist'][index]['startfid'] = ''
+#             data["tasklist"][index]['ignore_extension'] = True
+#             break
+#     await qas.update(host=qas_config.host, data=data)
+#     message = f"""
+#     更新任务成功：
+#     📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
+#     📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
+#     🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
+#     🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
+#     🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
+#
+#     📦 <b>扩展设置</b>：
+#     - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+#     - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
+#
+#     🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
+#     """
+#     await update.effective_message.reply_text(
+#         text=message,
+#         parse_mode="html",
+#         reply_markup=InlineKeyboardMarkup([
+#             [
+#                 InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
+#             ]
+#         ])
+#     )
+#
+#     context.user_data.pop("qas_update_task")
+#     return ConversationHandler.END
 
 
 @command(name='qas_delete_task', description="QAS 删除任务", args="{task id}")
