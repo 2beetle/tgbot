@@ -132,6 +132,34 @@
 
 ## 📖 使用说明
 
+### 🐳 Docker Compose 部署
+
+在部署环境中创建 `docker-compose.yml`，示例配置如下：
+
+```yaml
+version: '3.8'
+
+services:
+  tgbot:
+    image: beocean/tgbot:latest
+    container_name: tgbot
+    restart: unless-stopped
+    environment:
+      - TG_BOT_TOKEN=
+      - CLOUD_SAVER_HOST=
+      - CLOUD_SAVER_USERNAME=
+      - CLOUD_SAVER_PASSWORD=
+      - TMDB_API_KEY=
+      - TMDB_POSTER_BASE_URL=
+      - PANSOU_HOST=
+      - CRYPTO_PASSWORD=
+      - CRYPTO_SALT=
+    volumes:
+      - ./data:/app/db/data
+```
+
+补全环境变量后执行 `docker compose up -d` 启动服务。`./data` 会映射到容器内的 `/app/db/data` 目录，用于持久化数据库文件。
+
 ### 基本命令
 
 #### 用户命令
