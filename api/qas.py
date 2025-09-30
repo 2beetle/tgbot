@@ -1233,6 +1233,7 @@ async def qas_task_update_aria2_set(update: Update, context: ContextTypes.DEFAUL
 async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """显示更新菜单"""
     original_task = context.user_data.get("qas_update_task_original", {})
+    task_id = context.user_data.get("qas_update_task", {}).get('id')
     edit_data = context.user_data.get("qas_update_task_edit_data", {})
 
     # 显示当前配置和已修改的字段
@@ -1252,7 +1253,7 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
 
     message = f"""
 <b>任务更新状态：</b>
-🆔 <b>ID：</b> {original_task.get('id')}
+🆔 <b>ID：</b> {task_id}
 📌 <b>任务名称：</b> {original_task.get('taskname')}
 📁 <b>保存路径：</b> <code>{original_task.get('savepath')}</code>
 🔗 <b>分享链接：</b> <a href="{share_url}">点我查看</a>
