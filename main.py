@@ -89,18 +89,91 @@ async def help_tips(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"all_commands: {all_commands}")
     commands_name = [_['command'] for _ in commands]
     commands = [c for c in all_commands if c['name'] in commands_name]
-    text = "<b>📖 可用命令列表：</b>\n"
-    text += "<pre>命令       参数         描述\n"
-    text += "-------------------------------\n"
-    for cmd in commands:
-        text += f"/{cmd['name']:<10} {cmd['args']:<12} {cmd['description']}\n"
-    text += "</pre>"
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text,
-        parse_mode="HTML"
-    )
+    # 按功能分组命令
+    command_groups = {
+        "基础功能": ["register", "help", "refresh_menu", "my_info"],
+        "媒体搜索": ["search_tv", "search_movie", "search_media_resource"],
+        "配置管理": ["upsert_configuration"],
+        "QAS功能": ["qas_add_task", "qas_list_task", "qas_delete_task", "qas_run_script", "qas_view_task_regex", "qas_update_task"],
+        "Emby功能": ["emby_list_resource", "emby_list_notification"],
+        "提醒功能": ["remind", "list_my_job", "delete_job"]
+    }
+
+    # 为命令分组
+    grouped_commands = {}
+    for group, cmd_names in command_groups.items():
+        grouped_commands[group] = []
+        for cmd in commands:
+            if cmd['name'] in cmd_names:
+                grouped_commands[group].append(cmd)
+
+    # 构建帮助消息
+    text = "<b>📖 Bot 帮助文档</b>\n\n"
+
+    for group, cmd_list in grouped_commands.items():
+        if cmd_list:  # 只显示有命令的组
+            text += f"<b>📁 {group}：</b>\n"
+            for cmd in cmd_list:
+                cmd_text = f"• <code>/{cmd['name']}</code>"
+                if cmd['args']:
+                    cmd_text += f" <code>{cmd['args']}</code>"
+                text += cmd_text + f"\n  📝 {cmd['description']}\n"
+            text += "\n"
+
+    # 添加没有分组的命令
+    other_commands = []
+    for cmd in commands:
+        if not any(cmd['name'] in cmd_names for cmd_names in command_groups.values()):
+            other_commands.append(cmd)
+
+    if other_commands:
+        text += "<b>📁 其他功能：</b>\n"
+        for cmd in other_commands:
+            cmd_text = f"• <code>/{cmd['name']}</code>"
+            if cmd['args']:
+                cmd_text += f" <code>{cmd['args']}</code>"
+            text += cmd_text + f"\n  📝 {cmd['description']}\n"
+
+    text += "\n<i>💡 提示：点击命令可以直接复制</i>"
+
+    # 如果消息太长，分开发送
+    if len(text) > 4096:
+        # 分割消息
+        parts = []
+        current_part = ""
+        lines = text.split('\n')
+
+        for line in lines:
+            if len(current_part + line + '\n') > 4000:
+                parts.append(current_part)
+                current_part = line + '\n'
+            else:
+                current_part += line + '\n'
+
+        if current_part:
+            parts.append(current_part)
+
+        # 发送第一部分（包含标题和第一组）
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=parts[0],
+            parse_mode="HTML"
+        )
+
+        # 发送剩余部分
+        for part in parts[1:]:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=part,
+                parse_mode="HTML"
+            )
+    else:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="HTML"
+        )
 
 async def post_init(app):
     app.bot_data['async_scheduler'].start()

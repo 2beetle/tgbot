@@ -35,16 +35,57 @@ def get_decrypted_api_token(qas_config):
         return None
 
 HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
+QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH, QAS_EDIT_PATTERN, QAS_EDIT_REPLACE = range(6, 13)
 
 QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(4)
 
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
+QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 11)
 
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("请输入你 QAS 服务的 Host：")
-    return HOST_SET
+
+    # 检查是否已有配置
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 显示当前配置并让用户选择要修改的字段
+        keyboard = [
+            [InlineKeyboardButton("🌐 Host", callback_data="qas_edit_host")],
+            [InlineKeyboardButton("🔑 Api Token", callback_data="qas_edit_api_token")],
+            [InlineKeyboardButton("📁 TV Save Path", callback_data="qas_edit_save_path")],
+            [InlineKeyboardButton("🎬 Movie Save Path", callback_data="qas_edit_movie_path")],
+            [InlineKeyboardButton("🎯 Pattern", callback_data="qas_edit_pattern")],
+            [InlineKeyboardButton("🔄 Replace", callback_data="qas_edit_replace")],
+            [InlineKeyboardButton("✅ 完成修改", callback_data="qas_finish_edit")],
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+        ]
+
+        message = f"""
+<b>当前 QAS 配置：</b>
+🌐 <b>Host：</b> {existing_config.host}
+🔑 <b>Api Token：</b> {'***' if existing_config.api_token else '未设置'}
+📁 <b>TV Save Path：</b> {existing_config.save_path_prefix}
+🎬 <b>Movie Save Path：</b> {existing_config.movie_save_path_prefix}
+🎯 <b>Pattern：</b> <code>{existing_config.pattern}</code>
+🔄 <b>Replace：</b> <code>{existing_config.replace}</code>
+
+请选择要修改的字段：
+        """
+
+        await update.effective_message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="html"
+        )
+        return QAS_EDIT_FIELD_SELECT
+    else:
+        # 新配置，需要填写所有字段
+        await update.effective_message.reply_text("请输入你 QAS 服务的 Host：")
+        return HOST_SET
 
 async def host_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     host = str(update.message.text)
@@ -121,7 +162,7 @@ async def pattern_set_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
     query = update.callback_query
     await query.answer()
     pattern = query.data.split('qas_pattern_input')[1]
-    await query.message.reply_text(f"使用默认Pattern：{pattern}")
+    await update.effective_message.reply_text(f"使用默认Pattern：{pattern}")
     context.user_data["configuration"]['qas'].update({
         'pattern': pattern
     })
@@ -157,11 +198,184 @@ async def replace_set_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
     query = update.callback_query
     await query.answer()
     replace = query.data.split(':')[1]
-    await query.message.reply_text(f"使用默认Replace：{replace}")
+    await update.effective_message.reply_text(f"使用默认Replace：{replace}")
     context.user_data["configuration"]['qas'].update({
         'replace': replace
     })
     return await upsert_qas_configuration_finish(update, context, session, user)
+
+
+# 部分修改相关函数
+async def qas_field_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+
+    # 初始化编辑数据结构
+    if "qas_edit_data" not in context.user_data:
+        context.user_data["qas_edit_data"] = {}
+
+    field_map = {
+        "qas_edit_host": ("host", "请输入你 QAS 服务的 Host：", QAS_EDIT_HOST),
+        "qas_edit_api_token": ("api_token", "请输入你 QAS 服务的 Api Token：", QAS_EDIT_API_TOKEN),
+        "qas_edit_save_path": ("save_path_prefix", "请输入你 QAS 服务的 TV Save Path 前缀：(开头不要带/，会自动补充)", QAS_EDIT_SAVE_PATH),
+        "qas_edit_movie_path": ("movie_save_path_prefix", "请输入你 QAS 服务的 MOVIE Save Path 前缀：(开头不要带/，会自动补充)", QAS_EDIT_MOVIE_PATH),
+        "qas_edit_pattern": ("pattern", "请输入你 QAS 服务的 Pattern：", QAS_EDIT_PATTERN),
+        "qas_edit_replace": ("replace", "请输入你 QAS 服务的 Replace：", QAS_EDIT_REPLACE),
+        "qas_finish_edit": ("finish", "", None)
+    }
+
+    action = query.data
+
+    if action == "qas_finish_edit":
+        # 完成编辑，准备保存
+        existing_config = session.query(QuarkAutoDownloadConfig).filter(
+            QuarkAutoDownloadConfig.user_id == user.id
+        ).first()
+
+        # 构建更新数据
+        if "configuration" not in context.user_data:
+            context.user_data["configuration"] = {}
+        if "qas" not in context.user_data["configuration"]:
+            context.user_data["configuration"]["qas"] = {}
+
+        edit_data = context.user_data.get("qas_edit_data", {})
+
+        # 只更新用户修改过的字段，处理现有配置不存在的情况
+        if "host" in edit_data:
+            context.user_data["configuration"]["qas"]["host"] = edit_data["host"]
+        else:
+            context.user_data["configuration"]["qas"]["host"] = existing_config.host if existing_config else ""
+
+        if "api_token" in edit_data:
+            context.user_data["configuration"]["qas"]["api_token"] = edit_data["api_token"]
+        else:
+            # 使用现有配置的解密API token
+            decrypted_token = get_decrypted_api_token(existing_config) if existing_config else ""
+            context.user_data["configuration"]["qas"]["api_token"] = decrypted_token or ""
+
+        if "save_path_prefix" in edit_data:
+            context.user_data["configuration"]["qas"]["save_path_prefix"] = edit_data["save_path_prefix"]
+        else:
+            context.user_data["configuration"]["qas"]["save_path_prefix"] = existing_config.save_path_prefix if existing_config else ""
+
+        if "movie_save_path_prefix" in edit_data:
+            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = edit_data["movie_save_path_prefix"]
+        else:
+            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = existing_config.movie_save_path_prefix if existing_config else ""
+
+        if "pattern" in edit_data:
+            context.user_data["configuration"]["qas"]["pattern"] = edit_data["pattern"]
+        else:
+            context.user_data["configuration"]["qas"]["pattern"] = existing_config.pattern if existing_config else ""
+
+        if "replace" in edit_data:
+            context.user_data["configuration"]["qas"]["replace"] = edit_data["replace"]
+        else:
+            context.user_data["configuration"]["qas"]["replace"] = existing_config.replace if existing_config else ""
+
+        # 清理编辑数据
+        context.user_data.pop("qas_edit_data", None)
+        return await upsert_qas_configuration_finish(update, context, session, user)
+
+    elif action in field_map:
+        field_name, prompt_text, next_state = field_map[action]
+        if field_name == "finish":
+            return await qas_field_select_handler(update, context, session, user)
+
+        # 保存当前编辑的字段状态
+        context.user_data["qas_edit_current_field"] = next_state
+
+        await update.effective_message.reply_text(
+            prompt_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
+            ]])
+        )
+        return next_state
+
+
+async def qas_edit_field_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理编辑字段的输入"""
+    if not update.message:
+        return
+
+    current_state = context.user_data.get("qas_edit_current_field")
+    input_value = update.message.text
+
+    # 根据不同的字段进行特殊处理
+    if current_state == QAS_EDIT_HOST:
+        if input_value and input_value.endswith('/'):
+            input_value = input_value[:-1]
+    elif current_state in [QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH]:
+        input_value = '/' + str(input_value)
+        if input_value.endswith('/'):
+            input_value = input_value[:-1]
+
+    # 保存编辑的数据
+    if "qas_edit_data" not in context.user_data:
+        context.user_data["qas_edit_data"] = {}
+
+    field_mapping = {
+        QAS_EDIT_HOST: "host",
+        QAS_EDIT_API_TOKEN: "api_token",
+        QAS_EDIT_SAVE_PATH: "save_path_prefix",
+        QAS_EDIT_MOVIE_PATH: "movie_save_path_prefix",
+        QAS_EDIT_PATTERN: "pattern",
+        QAS_EDIT_REPLACE: "replace"
+    }
+
+    field_name = field_mapping.get(current_state)
+    if field_name:
+        context.user_data["qas_edit_data"][field_name] = input_value
+
+    # 回到字段选择界面
+    return await qas_show_edit_menu(update, context, session, user)
+
+
+async def qas_show_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """显示编辑菜单"""
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    edit_data = context.user_data.get("qas_edit_data", {})
+
+    # 显示当前配置和已修改的字段
+    host = edit_data.get("host", existing_config.host)
+    save_path = edit_data.get("save_path_prefix", existing_config.save_path_prefix)
+    movie_path = edit_data.get("movie_save_path_prefix", existing_config.movie_save_path_prefix)
+    pattern = edit_data.get("pattern", existing_config.pattern)
+    replace = edit_data.get("replace", existing_config.replace)
+
+    keyboard = [
+        [InlineKeyboardButton("🌐 Host", callback_data="qas_edit_host")],
+        [InlineKeyboardButton("🔑 Api Token", callback_data="qas_edit_api_token")],
+        [InlineKeyboardButton("📁 TV Save Path", callback_data="qas_edit_save_path")],
+        [InlineKeyboardButton("🎬 Movie Save Path", callback_data="qas_edit_movie_path")],
+        [InlineKeyboardButton("🎯 Pattern", callback_data="qas_edit_pattern")],
+        [InlineKeyboardButton("🔄 Replace", callback_data="qas_edit_replace")],
+        [InlineKeyboardButton("✅ 完成修改", callback_data="qas_finish_edit")],
+        [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+    ]
+
+    message = f"""
+<b>当前 QAS 配置：</b>
+🌐 <b>Host：</b> {host}
+🔑 <b>Api Token：</b> {'***' if edit_data.get('api_token') or existing_config.api_token else '未设置'}
+📁 <b>TV Save Path：</b> {save_path}
+🎬 <b>Movie Save Path：</b> {movie_path}
+🎯 <b>Pattern：</b> <code>{pattern}</code>
+🔄 <b>Replace：</b> <code>{replace}</code>
+
+请选择要修改的字段：
+    """
+
+    await update.effective_message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="html"
+    )
+    return QAS_EDIT_FIELD_SELECT
 
 
 async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -175,17 +389,36 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
     # 加密敏感数据
     encrypted_api_token = encrypt_sensitive_data(api_token)
 
-    count = session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).count()
-    if count > 0:
-        session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).update({
-            QuarkAutoDownloadConfig.host: host,
-            QuarkAutoDownloadConfig.api_token: encrypted_api_token,
-            QuarkAutoDownloadConfig.save_path_prefix: save_path_prefix,
-            QuarkAutoDownloadConfig.movie_save_path_prefix: movie_save_path_prefix,
-            QuarkAutoDownloadConfig.pattern: pattern,
-            QuarkAutoDownloadConfig.replace: replace
-        })
+    # 查找现有配置
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 部分更新：只更新提供的字段
+        update_data = {}
+        if host != existing_config.host:
+            update_data[QuarkAutoDownloadConfig.host] = host
+        if encrypted_api_token != existing_config.api_token:
+            update_data[QuarkAutoDownloadConfig.api_token] = encrypted_api_token
+        if save_path_prefix != existing_config.save_path_prefix:
+            update_data[QuarkAutoDownloadConfig.save_path_prefix] = save_path_prefix
+        if movie_save_path_prefix != existing_config.movie_save_path_prefix:
+            update_data[QuarkAutoDownloadConfig.movie_save_path_prefix] = movie_save_path_prefix
+        if pattern != existing_config.pattern:
+            update_data[QuarkAutoDownloadConfig.pattern] = pattern
+        if replace != existing_config.replace:
+            update_data[QuarkAutoDownloadConfig.replace] = replace
+
+        if update_data:
+            session.query(QuarkAutoDownloadConfig).filter(
+                QuarkAutoDownloadConfig.user_id == user.id
+            ).update(update_data)
+            message = "QAS 配置已部分更新：\n"
+        else:
+            message = "QAS 配置没有变化：\n"
     else:
+        # 新增配置
         session.add(
             QuarkAutoDownloadConfig(
                 host=host,
@@ -197,15 +430,22 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
                 user_id=user.id
             )
         )
+        message = "QAS 配置已新增：\n"
+
     session.commit()
 
-    message = f"""
-<b>Host：</b> {host}
-<b>Api Token：</b> {api_token}
-<b>TV Save Path 前缀：</b> {save_path_prefix}
-<b>MOVIE Save Path 前缀：</b> {movie_save_path_prefix}
-<b>Pattern：</b> <code>{pattern}</code>
-<b>Replace：</b> <code>{replace}</code>
+    # 显示当前配置状态
+    current_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    message += f"""
+<b>Host：</b> {current_config.host}
+<b>Api Token：</b> {'***' if current_config.api_token else '未设置'}
+<b>TV Save Path 前缀：</b> {current_config.save_path_prefix}
+<b>MOVIE Save Path 前缀：</b> {current_config.movie_save_path_prefix}
+<b>Pattern：</b> <code>{current_config.pattern}</code>
+<b>Replace：</b> <code>{current_config.replace}</code>
 
 操作完成
         """
@@ -249,6 +489,9 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
     if not api_token:
         await update.message.reply_text("无法解密QAS API令牌，请重新配置")
         return
+
+    await update.message.reply_text(text='解析分享链接中，请稍后')
+
     qas = QuarkAutoDownload(api_token=api_token)
     fid_files = await qas.get_fid_files(quark_share_url, True)
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
@@ -739,34 +982,368 @@ async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
 
     if not qas_config:
         await update.effective_message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
+        return
 
     api_token = get_decrypted_api_token(qas_config)
     if not api_token:
         await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
         return
+
     qas = QuarkAutoDownload(api_token=api_token)
     data = await qas.data(host=qas_config.host)
     task_info = data.get("tasklist", [])[task_id]
-    task_info.update({'id': task_id})
+
+    # 保存原始任务信息
     context.user_data.update({
-        'qas_update_task': task_info
+        'qas_update_task_original': task_info.copy(),
+        'qas_update_task': {'id': task_id},
+        'qas_update_task_edit_data': {}
     })
 
-    await query.message.reply_text(
-        text="请输入分享链接：",
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(f"保留旧链接", callback_data=f"qas_update_task_share_url_input")
-                ],
-                [
-                    InlineKeyboardButton(f"❌ 取消更新操作", callback_data=f"cancel_qas_update_task"),
-                ]
-            ]
-        )
-    )
+    # 显示任务信息并让用户选择要修改的字段
+    keyboard = [
+        [InlineKeyboardButton("🔗 分享链接", callback_data="qas_task_update_share_url")],
+        [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
+        [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
+        [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
+        [InlineKeyboardButton("✅ 完成更新", callback_data="qas_task_update_finish")],
+        [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+    ]
 
-    return QAS_TASK_UPDATE_IF_DEFAULT_URL_SET
+    message = f"""
+<b>当前任务信息：</b>
+🆔 <b>ID：</b> {task_id}
+📌 <b>任务名称：</b> {task_info.get('taskname')}
+📁 <b>保存路径：</b> <code>{task_info.get('savepath')}</code>
+🔗 <b>分享链接：</b> <a href="{task_info.get('shareurl')}">点我查看</a>
+🎯 <b>Pattern：</b> <code>{task_info.get('pattern')}</code>
+🔄 <b>Replace：</b> <code>{task_info.get('replace')}</code>
+🧲 <b>Aria2 自动下载：</b> {"✅ 开启" if task_info.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
+
+请选择要修改的字段：
+    """
+
+    await update.effective_message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="html"
+    )
+    return QAS_TASK_UPDATE_FIELD_SELECT
+
+
+# QAS 任务部分更新相关函数
+async def qas_task_update_field_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+
+    action = query.data
+
+    if action == "qas_task_update_finish":
+        # 完成更新，准备保存
+        return await qas_task_update_finish(update, context, session, user)
+    elif action == "qas_task_update_share_url":
+        # 修改分享链接
+        context.user_data["qas_update_current_field"] = QAS_TASK_UPDATE_SHARE_URL
+        await update.effective_message.reply_text(
+            "请输入新的分享链接：",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")
+            ]])
+        )
+        return QAS_TASK_UPDATE_SHARE_URL
+    elif action == "qas_task_update_pattern":
+        # 修改Pattern
+        original_task = context.user_data.get("qas_update_task_original", {})
+        qas_config = session.query(QuarkAutoDownloadConfig).filter(
+            QuarkAutoDownloadConfig.user_id == user.id
+        ).first()
+
+        await update.effective_message.reply_text(
+            f"请输入或选择 <b>Pattern</b>：\n"
+            f"<b>当前Pattern</b>: <code>{original_task.get('pattern')}</code>\n"
+            f"<b>默认Pattern</b>: <code>{qas_config.pattern}</code>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("保留当前Pattern", callback_data="qas_task_update_pattern_keep")],
+                [InlineKeyboardButton("使用默认Pattern", callback_data="qas_task_update_pattern_default")],
+                [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+            ]),
+            parse_mode="html"
+        )
+        return QAS_TASK_UPDATE_PATTERN
+    elif action == "qas_task_update_replace":
+        # 修改Replace
+        original_task = context.user_data.get("qas_update_task_original", {})
+        qas_config = session.query(QuarkAutoDownloadConfig).filter(
+            QuarkAutoDownloadConfig.user_id == user.id
+        ).first()
+
+        await update.effective_message.reply_text(
+            f"请输入或选择 <b>Replace</b>：\n"
+            f"<b>当前Replace</b>: <code>{original_task.get('replace')}</code>\n"
+            f"<b>默认Replace</b>: <code>{qas_config.replace}</code>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("保留当前Replace", callback_data="qas_task_update_replace_keep")],
+                [InlineKeyboardButton("使用默认Replace", callback_data="qas_task_update_replace_default")],
+                [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+            ]),
+            parse_mode="html"
+        )
+        return QAS_TASK_UPDATE_REPLACE
+    elif action == "qas_task_update_aria2":
+        # 修改Aria2设置
+        original_task = context.user_data.get("qas_update_task_original", {})
+        current_status = original_task.get('addition', {}).get('aria2', {}).get('auto_download', False)
+
+        await update.effective_message.reply_text(
+            "请选择 Aria2 自动下载设置：",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ 开启", callback_data="qas_task_update_aria2_enable")],
+                [InlineKeyboardButton("❌ 关闭", callback_data="qas_task_update_aria2_disable")],
+                [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+            ])
+        )
+        return QAS_TASK_UPDATE_ARIA2
+
+
+async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理分享链接输入"""
+    if not update.message:
+        return
+
+    await update.message.reply_text(text='解析分享链接中，请稍后')
+
+    quark_share_url = update.message.text
+    if not quark_share_url.endswith('/'):
+        quark_share_url += '/'
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+
+    qas = QuarkAutoDownload(api_token=api_token)
+    fid_files = await qas.get_fid_files(quark_share_url)
+    if not fid_files:
+        await update.message.reply_text("链接状态异常，请重新输入")
+        return
+
+    tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
+    for _ in tree_paragraphs:
+        file_name = _.split('\n')[0].split('__')[0]
+        fid = _.split('\n')[0].split('__')[1]
+        url = quark_share_url + fid
+        tmp_url_id = get_random_letter_number_id()
+        context.user_data[tmp_url_id] = url
+        await update.message.reply_text(
+            text=_,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"选择 {file_name}", callback_data=f"qas_task_update_share_url_select:{tmp_url_id}")
+            ]])
+        )
+    return QAS_TASK_UPDATE_SHARE_URL
+
+
+async def qas_task_update_share_url_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理分享链接选择"""
+    query = update.callback_query
+    await query.answer()
+    tmp_url_id = query.data.split(':')[1]
+    selected_url = context.user_data[tmp_url_id]
+
+    # 保存编辑的数据
+    context.user_data['qas_update_task_edit_data']['shareurl'] = selected_url
+
+    await update.effective_message.reply_text(f"分享链接已更新为：{selected_url}")
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
+async def qas_task_update_pattern_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理Pattern设置"""
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        action = query.data
+
+        if action == "qas_task_update_pattern_keep":
+            # 保留当前Pattern，不需要修改
+            pass
+        elif action == "qas_task_update_pattern_default":
+            qas_config = session.query(QuarkAutoDownloadConfig).filter(
+                QuarkAutoDownloadConfig.user_id == user.id
+            ).first()
+            context.user_data['qas_update_task_edit_data']['pattern'] = qas_config.pattern
+            await update.effective_message.reply_text(f"Pattern已设置为默认值：{qas_config.pattern}")
+        else:
+            # 自定义输入
+            return
+    else:
+        # 文本输入
+        context.user_data['qas_update_task_edit_data']['pattern'] = update.message.text
+        await update.message.reply_text(f"Pattern已更新为：{update.message.text}")
+
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
+async def qas_task_update_replace_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理Replace设置"""
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        action = query.data
+
+        if action == "qas_task_update_replace_keep":
+            # 保留当前Replace，不需要修改
+            pass
+        elif action == "qas_task_update_replace_default":
+            qas_config = session.query(QuarkAutoDownloadConfig).filter(
+                QuarkAutoDownloadConfig.user_id == user.id
+            ).first()
+            context.user_data['qas_update_task_edit_data']['replace'] = qas_config.replace
+            await update.effective_message.reply_text(f"Replace已设置为默认值：{qas_config.replace}")
+        else:
+            # 自定义输入
+            return
+    else:
+        # 文本输入
+        context.user_data['qas_update_task_edit_data']['replace'] = update.message.text
+        await update.message.reply_text(f"Replace已更新为：{update.message.text}")
+
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
+async def qas_task_update_aria2_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理Aria2设置"""
+    query = update.callback_query
+    await query.answer()
+    action = query.data
+
+    if action == "qas_task_update_aria2_enable":
+        context.user_data['qas_update_task_edit_data']['aria2_auto_download'] = True
+        await update.effective_message.reply_text("Aria2 自动下载已开启")
+    elif action == "qas_task_update_aria2_disable":
+        context.user_data['qas_update_task_edit_data']['aria2_auto_download'] = False
+        await update.effective_message.reply_text("Aria2 自动下载已关闭")
+
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
+async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """显示更新菜单"""
+    original_task = context.user_data.get("qas_update_task_original", {})
+    task_id = context.user_data.get("qas_update_task", {}).get('id')
+    edit_data = context.user_data.get("qas_update_task_edit_data", {})
+
+    # 显示当前配置和已修改的字段
+    share_url = edit_data.get("shareurl", original_task.get("shareurl"))
+    pattern = edit_data.get("pattern", original_task.get("pattern"))
+    replace = edit_data.get("replace", original_task.get("replace"))
+    aria2_auto_download = edit_data.get("aria2_auto_download", original_task.get("addition", {}).get("aria2", {}).get("auto_download", False))
+
+    keyboard = [
+        [InlineKeyboardButton("🔗 分享链接", callback_data="qas_task_update_share_url")],
+        [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
+        [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
+        [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
+        [InlineKeyboardButton("✅ 完成更新", callback_data="qas_task_update_finish")],
+        [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+    ]
+
+    message = f"""
+<b>任务更新状态：</b>
+🆔 <b>ID：</b> {task_id}
+📌 <b>任务名称：</b> {original_task.get('taskname')}
+📁 <b>保存路径：</b> <code>{original_task.get('savepath')}</code>
+🔗 <b>分享链接：</b> <a href="{share_url}">点我查看</a>
+🎯 <b>Pattern：</b> <code>{pattern}</code>
+🔄 <b>Replace：</b> <code>{replace}</code>
+🧲 <b>Aria2 自动下载：</b> {"✅ 开启" if aria2_auto_download else "❌ 关闭"}
+
+请选择要修改的字段：
+    """
+
+    await update.effective_message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="html"
+    )
+    return QAS_TASK_UPDATE_FIELD_SELECT
+
+
+async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """完成任务更新"""
+    query = update.callback_query
+    await query.answer()
+
+    task_id = context.user_data['qas_update_task']['id']
+    original_task = context.user_data.get("qas_update_task_original", {})
+    edit_data = context.user_data.get("qas_update_task_edit_data", {})
+
+    if not edit_data:
+        await update.effective_message.reply_text("没有进行任何修改")
+        return ConversationHandler.END
+
+    # 构建更新数据
+    update_data = original_task.copy()
+
+    # 只更新用户修改过的字段
+    if "shareurl" in edit_data:
+        update_data["shareurl"] = edit_data["shareurl"]
+    if "pattern" in edit_data:
+        update_data["pattern"] = edit_data["pattern"]
+    if "replace" in edit_data:
+        update_data["replace"] = edit_data["replace"]
+    if "aria2_auto_download" in edit_data:
+        if "addition" not in update_data:
+            update_data["addition"] = {}
+        if "aria2" not in update_data["addition"]:
+            update_data["addition"]["aria2"] = {}
+        update_data["addition"]["aria2"]["auto_download"] = edit_data["aria2_auto_download"]
+
+    # 调用API更新任务
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return ConversationHandler.END
+
+    qas = QuarkAutoDownload(api_token=api_token)
+
+    data = await qas.data(host=qas_config.host)
+
+    for index, task in enumerate(data.get("tasklist", [])):
+        if index == int(task_id):
+            for k, v in update_data.items():
+                data['tasklist'][index][k] = v
+            if 'id' in data['tasklist'][index]:
+                data['tasklist'][index].pop('id')
+            if 'ai_params' in data['tasklist'][index]:
+                data['tasklist'][index].pop('ai_params')
+            if 'shareurl_ban' in data['tasklist'][index]:
+                data['tasklist'][index].pop('shareurl_ban')
+
+            data['tasklist'][index]["addition"]["aria2"]["auto_download"] = update_data["addition"]["aria2"]["auto_download"] if update_data["addition"]["aria2"]["auto_download"] else False
+
+            data['tasklist'][index]['startfid'] = ''
+            data["tasklist"][index]['ignore_extension'] = True
+            break
+    success = await qas.update(host=qas_config.host, data=data)
+
+    if success:
+        await update.effective_message.reply_text("✅ 任务更新成功！")
+    else:
+        await update.effective_message.reply_text("❌ 任务更新失败，请检查配置")
+
+    # 清理数据
+    context.user_data.pop("qas_update_task_original", None)
+    context.user_data.pop("qas_update_task", None)
+    context.user_data.pop("qas_update_task_edit_data", None)
+
+    return ConversationHandler.END
 
 
 async def qas_task_update_select_default_url_set_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -1001,65 +1578,67 @@ async def qas_update_task_aria2_set_button(update: Update, context: ContextTypes
     return await qas_task_update_finish(update, context, session, user)
 
 
-async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    task_in_update = context.user_data['qas_update_task']
-    qas_config = session.query(QuarkAutoDownloadConfig).filter(
-        QuarkAutoDownloadConfig.user_id == user.id
-    ).first()
-    api_token = get_decrypted_api_token(qas_config)
-    if not api_token:
-        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
-        return
-    qas = QuarkAutoDownload(api_token=api_token)
-    data = await qas.data(host=qas_config.host)
-
-    for index, task in enumerate(data.get("tasklist", [])):
-        if index == int(task_in_update.get("id")):
-            for k, v in task_in_update.items():
-                data['tasklist'][index][k] = v
-            data['tasklist'][index].pop('id')
-            data['tasklist'][index].pop('ai_params')
-            if 'shareurl_ban' in data['tasklist'][index]:
-                data['tasklist'][index].pop('shareurl_ban')
-            data['tasklist'][index]['startfid'] = ''
-            data["tasklist"][index]['ignore_extension'] = True
-            break
-    await qas.update(host=qas_config.host, data=data)
-    message = f"""
-    更新任务成功：
-    📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
-    📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
-    🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
-    🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
-    🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
-
-    📦 <b>扩展设置</b>：
-    - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
-    - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
-
-    🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
-    """
-    await update.effective_message.reply_text(
-        text=message,
-        parse_mode="html",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
-            ],
-            [
-                InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
-            ]
-        ])
-    )
-
-    context.user_data.pop("qas_update_task")
-    return ConversationHandler.END
+# async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+#     task_in_update = context.user_data['qas_update_task']
+#     qas_config = session.query(QuarkAutoDownloadConfig).filter(
+#         QuarkAutoDownloadConfig.user_id == user.id
+#     ).first()
+#     api_token = get_decrypted_api_token(qas_config)
+#     if not api_token:
+#         await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+#         return
+#     qas = QuarkAutoDownload(api_token=api_token)
+#     data = await qas.data(host=qas_config.host)
+#
+#     for index, task in enumerate(data.get("tasklist", [])):
+#         if index == int(task_in_update.get("id")):
+#             for k, v in task_in_update.items():
+#                 data['tasklist'][index][k] = v
+#             if 'id' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('id')
+#             if 'ai_params' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('ai_params')
+#             if 'shareurl_ban' in data['tasklist'][index]:
+#                 data['tasklist'][index].pop('shareurl_ban')
+#             data['tasklist'][index]['startfid'] = ''
+#             data["tasklist"][index]['ignore_extension'] = True
+#             break
+#     await qas.update(host=qas_config.host, data=data)
+#     message = f"""
+#     更新任务成功：
+#     📌 <b>任务名称</b>：{data['tasklist'][index]['taskname']}
+#     📁 <b>保存路径</b>：<code>{data['tasklist'][index]['savepath']}</code>
+#     🔗 <b>分享链接</b>：<a href="{data['tasklist'][index]['shareurl']}">点我打开</a>
+#     🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
+#     🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
+#
+#     📦 <b>扩展设置</b>：
+#     - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+#     - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
+#
+#     🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
+#     """
+#     await update.effective_message.reply_text(
+#         text=message,
+#         parse_mode="html",
+#         reply_markup=InlineKeyboardMarkup([
+#             [
+#                 InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
+#             ],
+#             [
+#                 InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
+#             ]
+#         ])
+#     )
+#
+#     context.user_data.pop("qas_update_task")
+#     return ConversationHandler.END
 
 
 @command(name='qas_delete_task', description="QAS 删除任务", args="{task id}")
@@ -1294,6 +1873,49 @@ handlers = [
                         pattern=r"^qas_replace_input:.*$"
                 )
             ],
+            # 部分修改状态
+            QAS_EDIT_FIELD_SELECT: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_field_select_handler),
+                        pattern=r"^qas_(edit_|finish_).*$"
+                )
+            ],
+            QAS_EDIT_HOST: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_API_TOKEN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_SAVE_PATH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_MOVIE_PATH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_PATTERN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_REPLACE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
         },
         fallbacks=[
             CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_upsert_configuration$")
@@ -1349,62 +1971,6 @@ handlers = [
             CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_qas_update_task$")
         ],
     ),
-    # update qas task
-    ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(
-                depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_update_task),
-                pattern=r"^qas_update_task:.*$"
-            )
-        ],
-        states={
-            QAS_TASK_UPDATE_IF_DEFAULT_URL_SET: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_select_default_url_set_text)
-                ),
-                CallbackQueryHandler(
-                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_select_default_url_set_buton),
-                    pattern=r"^qas_update_task_share_url_input$"
-                )
-            ],
-            QAS_TASK_UPDATE_SELECT_NEW_URL_SET: [
-                CallbackQueryHandler(
-                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_select_new_url_set_button),
-                        pattern=r"^qas_task_update_select_new_url_set:.*$"
-                )
-            ],
-            QAS_TASK_UPDATE_PATTERN_SET: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_pattern_set_text)
-                ),
-                CallbackQueryHandler(
-                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_pattern_set_button),
-                        pattern=r"^qas_update_task_pattern_set:.*$"
-                )
-            ],
-            QAS_TASK_UPDATE_REPLACE_SET: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_replace_set_text)
-                ),
-                CallbackQueryHandler(
-                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_replace_set_button),
-                        pattern=r"^qas_update_task_replace_set:.*$"
-                )
-            ],
-            QAS_TASK_UPDATE_ARIA2_SET: [
-                CallbackQueryHandler(
-                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_update_task_aria2_set_button),
-                        pattern=r"^qas_update_task_aria2_set:.*$"
-                )
-            ]
-        },
-        fallbacks=[
-            CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_qas_update_task$")
-        ],
-    ),
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_resource_type),
             pattern=r"^qas_add_task_state:.*$"
@@ -1420,6 +1986,63 @@ handlers = [
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_select_movie),
             pattern=r"^qas_add_task_movie:.*$"
+    ),
+    # update qas task (支持部分更新)
+    ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(
+                depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_update_task),
+                pattern=r"^qas_update_task:.*$"
+            )
+        ],
+        states={
+            # 部分更新状态
+            QAS_TASK_UPDATE_FIELD_SELECT: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_field_select_handler),
+                        pattern=r"^qas_task_update_.*$"
+                )
+            ],
+            QAS_TASK_UPDATE_SHARE_URL: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_share_url_set)
+                ),
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_share_url_select),
+                        pattern=r"^qas_task_update_share_url_select:.*$"
+                )
+            ],
+            QAS_TASK_UPDATE_PATTERN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_pattern_set)
+                ),
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_pattern_set),
+                        pattern=r"^qas_task_update_pattern_(keep|default)$"
+                )
+            ],
+            QAS_TASK_UPDATE_REPLACE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_replace_set)
+                ),
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_replace_set),
+                        pattern=r"^qas_task_update_replace_(keep|default)$"
+                )
+            ],
+            QAS_TASK_UPDATE_ARIA2: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_aria2_set),
+                        pattern=r"^qas_task_update_aria2_(enable|disable)$"
+                )
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_qas_update_task$")
+        ],
     ),
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_delete_task_handler),

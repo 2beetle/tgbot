@@ -16,6 +16,7 @@ from utils.emby import Emby
 from utils.crypto import encrypt_sensitive_data, decrypt_sensitive_data
 
 HOST_SET, API_TOKEN_SET, USERNAME_SET, PWD_SET = range(4)
+EMBY_EDIT_FIELD_SELECT, EMBY_EDIT_HOST, EMBY_EDIT_API_TOKEN, EMBY_EDIT_USERNAME, EMBY_EDIT_PASSWORD = range(4, 9)
 
 
 logger = logging.getLogger(__name__)
@@ -169,10 +170,45 @@ async def emby_notification_set(update: Update, context: ContextTypes.DEFAULT_TY
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("请输入你 Emby 服务的 Host：", reply_markup=InlineKeyboardMarkup([[
-        InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
-    ]]))
-    return HOST_SET
+
+    # 检查是否已有配置
+    existing_config = session.query(EmbyConfig).filter(
+        EmbyConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 显示当前配置并让用户选择要修改的字段
+        keyboard = [
+            [InlineKeyboardButton("🌐 Host", callback_data="emby_edit_host")],
+            [InlineKeyboardButton("🔑 Api Token", callback_data="emby_edit_api_token")],
+            [InlineKeyboardButton("👤 用户名", callback_data="emby_edit_username")],
+            [InlineKeyboardButton("🔒 密码", callback_data="emby_edit_password")],
+            [InlineKeyboardButton("✅ 完成修改", callback_data="emby_finish_edit")],
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+        ]
+
+        message = f"""
+<b>当前 Emby 配置：</b>
+🌐 <b>Host：</b> {existing_config.host}
+🔑 <b>Api Token：</b> {'***' if existing_config.api_token else '未设置'}
+👤 <b>用户名：</b> {existing_config.username}
+🔒 <b>密码：</b> {'***' if existing_config.password else '未设置'}
+
+请选择要修改的字段：
+        """
+
+        await query.message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="html"
+        )
+        return EMBY_EDIT_FIELD_SELECT
+    else:
+        # 新配置，需要填写所有字段
+        await query.message.reply_text("请输入你 Emby 服务的 Host：", reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
+        ]]))
+        return HOST_SET
 
 async def host_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     host = str(update.message.text)
@@ -224,6 +260,162 @@ async def pwd_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: S
     })
     return await upsert_emby_configuration_finish(update, context, session, user)
 
+# Emby 部分修改相关函数
+async def emby_field_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+
+    # 初始化编辑数据结构
+    if "emby_edit_data" not in context.user_data:
+        context.user_data["emby_edit_data"] = {}
+
+    field_map = {
+        "emby_edit_host": ("host", "请输入你 Emby 服务的 Host：", EMBY_EDIT_HOST),
+        "emby_edit_api_token": ("api_token", "请输入你 Emby 服务的 Api Token：", EMBY_EDIT_API_TOKEN),
+        "emby_edit_username": ("username", "请输入你 Emby 的管理员用户名：", EMBY_EDIT_USERNAME),
+        "emby_edit_password": ("password", "请输入你 Emby 的管理员密码：", EMBY_EDIT_PASSWORD),
+        "emby_finish_edit": ("finish", "", None)
+    }
+
+    action = query.data
+
+    if action == "emby_finish_edit":
+        # 完成编辑，准备保存
+        existing_config = session.query(EmbyConfig).filter(
+            EmbyConfig.user_id == user.id
+        ).first()
+
+        # 构建更新数据
+        if "configuration" not in context.user_data:
+            context.user_data["configuration"] = {}
+        if "emby" not in context.user_data["configuration"]:
+            context.user_data["configuration"]["emby"] = {}
+
+        edit_data = context.user_data.get("emby_edit_data", {})
+
+        # 只更新用户修改过的字段，处理现有配置不存在的情况
+        if "host" in edit_data:
+            context.user_data["configuration"]["emby"]["host"] = edit_data["host"]
+        else:
+            context.user_data["configuration"]["emby"]["host"] = existing_config.host if existing_config else ""
+
+        if "api_token" in edit_data:
+            context.user_data["configuration"]["emby"]["api_token"] = edit_data["api_token"]
+        else:
+            # 使用现有配置的解密API token
+            if existing_config:
+                decrypted_token = get_decrypted_emby_credentials(existing_config)[0]
+            else:
+                decrypted_token = ""
+            context.user_data["configuration"]["emby"]["api_token"] = decrypted_token or ""
+
+        if "username" in edit_data:
+            context.user_data["configuration"]["emby"]["username"] = edit_data["username"]
+        else:
+            context.user_data["configuration"]["emby"]["username"] = existing_config.username if existing_config else ""
+
+        if "password" in edit_data:
+            context.user_data["configuration"]["emby"]["pwd"] = edit_data["password"]
+        else:
+            # 使用现有配置的解密密码
+            if existing_config:
+                decrypted_password = get_decrypted_emby_credentials(existing_config)[2]
+            else:
+                decrypted_password = ""
+            context.user_data["configuration"]["emby"]["pwd"] = decrypted_password or ""
+
+        # 清理编辑数据
+        context.user_data.pop("emby_edit_data", None)
+        return await upsert_emby_configuration_finish(update, context, session, user)
+
+    elif action in field_map:
+        field_name, prompt_text, next_state = field_map[action]
+        if field_name == "finish":
+            return await emby_field_select_handler(update, context, session, user)
+
+        # 保存当前编辑的字段状态
+        context.user_data["emby_edit_current_field"] = next_state
+
+        await query.message.reply_text(
+            prompt_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
+            ]])
+        )
+        return next_state
+
+
+async def emby_edit_field_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理编辑字段的输入"""
+    if not update.message:
+        return
+
+    current_state = context.user_data.get("emby_edit_current_field")
+    input_value = update.message.text
+
+    # 根据不同的字段进行特殊处理
+    if current_state == EMBY_EDIT_HOST:
+        if input_value and input_value.endswith('/'):
+            input_value = input_value[:-1]
+
+    # 保存编辑的数据
+    if "emby_edit_data" not in context.user_data:
+        context.user_data["emby_edit_data"] = {}
+
+    field_mapping = {
+        EMBY_EDIT_HOST: "host",
+        EMBY_EDIT_API_TOKEN: "api_token",
+        EMBY_EDIT_USERNAME: "username",
+        EMBY_EDIT_PASSWORD: "password"
+    }
+
+    field_name = field_mapping.get(current_state)
+    if field_name:
+        context.user_data["emby_edit_data"][field_name] = input_value
+
+    # 回到字段选择界面
+    return await emby_show_edit_menu(update, context, session, user)
+
+
+async def emby_show_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """显示编辑菜单"""
+    existing_config = session.query(EmbyConfig).filter(
+        EmbyConfig.user_id == user.id
+    ).first()
+
+    edit_data = context.user_data.get("emby_edit_data", {})
+
+    # 显示当前配置和已修改的字段
+    host = edit_data.get("host", existing_config.host)
+    username = edit_data.get("username", existing_config.username)
+
+    keyboard = [
+        [InlineKeyboardButton("🌐 Host", callback_data="emby_edit_host")],
+        [InlineKeyboardButton("🔑 Api Token", callback_data="emby_edit_api_token")],
+        [InlineKeyboardButton("👤 用户名", callback_data="emby_edit_username")],
+        [InlineKeyboardButton("🔒 密码", callback_data="emby_edit_password")],
+        [InlineKeyboardButton("✅ 完成修改", callback_data="emby_finish_edit")],
+        [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+    ]
+
+    message = f"""
+<b>当前 Emby 配置：</b>
+🌐 <b>Host：</b> {host}
+🔑 <b>Api Token：</b> {'***' if edit_data.get('api_token') or existing_config.api_token else '未设置'}
+👤 <b>用户名：</b> {username}
+🔒 <b>密码：</b> {'***' if edit_data.get('password') or existing_config.password else '未设置'}
+
+请选择要修改的字段：
+    """
+
+    await update.effective_message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="html"
+    )
+    return EMBY_EDIT_FIELD_SELECT
+
+
 async def upsert_emby_configuration_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     host = context.user_data["configuration"]["emby"]["host"]
     api_token = context.user_data["configuration"]["emby"]["api_token"]
@@ -234,15 +426,30 @@ async def upsert_emby_configuration_finish(update: Update, context: ContextTypes
     encrypted_api_token = encrypt_sensitive_data(api_token)
     encrypted_password = encrypt_sensitive_data(password)
 
-    count = session.query(EmbyConfig).filter(EmbyConfig.user_id == user.id).count()
-    if count > 0:
-        session.query(EmbyConfig).filter(EmbyConfig.user_id == user.id).update({
-            EmbyConfig.host: host,
-            EmbyConfig.api_token: encrypted_api_token,
-            EmbyConfig.username: username,
-            EmbyConfig.password: encrypted_password,
-        })
+    # 查找现有配置
+    existing_config = session.query(EmbyConfig).filter(
+        EmbyConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 部分更新：只更新提供的字段
+        update_data = {}
+        if host != existing_config.host:
+            update_data[EmbyConfig.host] = host
+        if encrypted_api_token != existing_config.api_token:
+            update_data[EmbyConfig.api_token] = encrypted_api_token
+        if username != existing_config.username:
+            update_data[EmbyConfig.username] = username
+        if encrypted_password != existing_config.password:
+            update_data[EmbyConfig.password] = encrypted_password
+
+        if update_data:
+            session.query(EmbyConfig).filter(EmbyConfig.user_id == user.id).update(update_data)
+            message = "Emby 配置已部分更新：\n"
+        else:
+            message = "Emby 配置没有变化：\n"
     else:
+        # 新增配置
         session.add(
             EmbyConfig(
                 host=host,
@@ -252,10 +459,22 @@ async def upsert_emby_configuration_finish(update: Update, context: ContextTypes
                 password=encrypted_password,
             )
         )
+        message = "Emby 配置已新增：\n"
+
     session.commit()
 
-    message = f"""
-已添加 <b>{host}</b> 配置
+    # 显示当前配置状态
+    current_config = session.query(EmbyConfig).filter(
+        EmbyConfig.user_id == user.id
+    ).first()
+
+    message += f"""
+<b>Host：</b> {current_config.host}
+<b>Api Token：</b> {'***' if current_config.api_token else '未设置'}
+<b>用户名：</b> {current_config.username}
+<b>密码：</b> {'***' if current_config.password else '未设置'}
+
+操作完成
 """
     await update.effective_message.reply_text(message, parse_mode="html")
     return ConversationHandler.END
@@ -293,7 +512,38 @@ handlers = [
                     filters.TEXT & ~filters.COMMAND,
                     depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(pwd_set)
                 )
-            ]
+            ],
+            # 部分修改状态
+            EMBY_EDIT_FIELD_SELECT: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_field_select_handler),
+                        pattern=r"^emby_(edit_|finish_).*$"
+                )
+            ],
+            EMBY_EDIT_HOST: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_edit_field_set)
+                )
+            ],
+            EMBY_EDIT_API_TOKEN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_edit_field_set)
+                )
+            ],
+            EMBY_EDIT_USERNAME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_edit_field_set)
+                )
+            ],
+            EMBY_EDIT_PASSWORD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_edit_field_set)
+                )
+            ],
         },
         fallbacks=[
             CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_upsert_configuration$")
