@@ -4,16 +4,19 @@ import logging
 import uuid
 
 import pytz
+from apscheduler.jobstores.base import JobLookupError
 from sqlalchemy.orm import Session
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 
 from api.base import command
-from config.config import TIME_ZONE, AI_API_KEYS, AI_HOST, AI_API_KEY, AI_MODEL
+from config.config import TIME_ZONE, AI_API_KEYS, AI_HOST, AI_API_KEY, AI_MODEL, get_allow_roles_command_map
 from db.models.job import UserApschedulerJobs
 from db.models.user import User
 from utils.ai import openapi_chat
-from utils.job import send_message
+from utils.command_middleware import depends
+from utils.job import send_message, send_reminder_message
 
 logger = logging.getLogger(__name__)
 
@@ -149,18 +152,28 @@ EXAMPLE JSON OUTPUT:
 
     if trigger == 'date':
         run_date = datetime.datetime.strptime(remind_data.get('run_date'), '%Y-%m-%d %H:%M:%S')
+        timezone = pytz.timezone(TIME_ZONE)
+        if run_date.tzinfo is None:
+            run_date = timezone.localize(run_date)
 
         async_scheduler.add_job(
-            'utils.job:send_message',
-            trigger="date",
-            run_date=run_date,
+            'utils.job:send_reminder_message',
+            trigger="interval",
+            minutes=60,
+            start_date=run_date,
             kwargs={
                 'message': remind_content,
                 'chat_id': update.effective_chat.id,
+                'job_id': job_id,
             },
-            id=job_id
+            id=job_id,
+            replace_existing=True,
+            max_instances=1,
         )
-        reply_message = f'我将会在 {run_date} 提醒你 {remind_content}'
+        reply_message = (
+            f'我将会在 {run_date.strftime("%Y-%m-%d %H:%M:%S")} 提醒你 {remind_content}，'
+            f'若当时还未完成，我会每隔一小时再提醒一次，完成后记得点击提醒里的「完成」按钮哦'
+        )
 
     elif trigger == 'cron':
         async_scheduler.add_job(
@@ -213,7 +226,40 @@ async def cancel_conversation_callback(update: Update, context: ContextTypes.DEF
     await query.message.reply_text("操作已取消")
     return ConversationHandler.END
 
+
+async def remind_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer(text="提醒已完成")
+
+    job_id = query.data.split(":", 1)[1] if ":" in query.data else query.data
+
+    scheduler = context.bot_data.get('async_scheduler')
+    if scheduler:
+        try:
+            scheduler.remove_job(job_id)
+        except JobLookupError:
+            logger.info("Job %s not found when trying to remove", job_id)
+
+        updated = session.query(UserApschedulerJobs).filter(
+            UserApschedulerJobs.apscheduler_job_id == job_id,
+            UserApschedulerJobs.deleted_at.is_(None)
+        ).update(
+            {UserApschedulerJobs.deleted_at: datetime.datetime.utcnow()},
+            synchronize_session=False
+        )
+        if updated:
+            session.commit()
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except BadRequest:
+        logger.info("Reminder message reply markup already cleared for job %s", job_id)
+
 handlers = [
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('delete_job'))(remind_done_callback),
+            pattern=r"^remind_done:"
+    ),
     CallbackQueryHandler(
             cancel_conversation_callback,
             pattern=r"^cancel_conversation$"

@@ -1,11 +1,10 @@
 import datetime
 import logging
-from os.path import exists
 
 import telegram
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
-from telegram import Bot
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config.config import TG_BOT_TOKEN
 from db.models import model_engine
@@ -20,6 +19,17 @@ async def send_message(message: str, chat_id: int):
         chat_id=chat_id,
         text=message,
         parse_mode="HTML"
+    )
+
+
+async def send_reminder_message(message: str, chat_id: int, job_id: str):
+    bot = telegram.Bot(token=TG_BOT_TOKEN)
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("完成 ✅", callback_data=f"remind_done:{job_id}")]])
+    await bot.send_message(
+        chat_id=chat_id,
+        text=message,
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
 
 
