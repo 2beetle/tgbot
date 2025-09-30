@@ -35,6 +35,7 @@ def get_decrypted_api_token(qas_config):
         return None
 
 HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
+QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH, QAS_EDIT_PATTERN, QAS_EDIT_REPLACE = range(6, 13)
 
 QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(4)
 
@@ -43,8 +44,47 @@ QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("请输入你 QAS 服务的 Host：")
-    return HOST_SET
+
+    # 检查是否已有配置
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 显示当前配置并让用户选择要修改的字段
+        keyboard = [
+            [InlineKeyboardButton("🌐 Host", callback_data="qas_edit_host")],
+            [InlineKeyboardButton("🔑 Api Token", callback_data="qas_edit_api_token")],
+            [InlineKeyboardButton("📁 TV Save Path", callback_data="qas_edit_save_path")],
+            [InlineKeyboardButton("🎬 Movie Save Path", callback_data="qas_edit_movie_path")],
+            [InlineKeyboardButton("🎯 Pattern", callback_data="qas_edit_pattern")],
+            [InlineKeyboardButton("🔄 Replace", callback_data="qas_edit_replace")],
+            [InlineKeyboardButton("✅ 完成修改", callback_data="qas_finish_edit")],
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+        ]
+
+        message = f"""
+<b>当前 QAS 配置：</b>
+🌐 <b>Host：</b> {existing_config.host}
+🔑 <b>Api Token：</b> {'***' if existing_config.api_token else '未设置'}
+📁 <b>TV Save Path：</b> {existing_config.save_path_prefix}
+🎬 <b>Movie Save Path：</b> {existing_config.movie_save_path_prefix}
+🎯 <b>Pattern：</b> <code>{existing_config.pattern}</code>
+🔄 <b>Replace：</b> <code>{existing_config.replace}</code>
+
+请选择要修改的字段：
+        """
+
+        await query.message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="html"
+        )
+        return QAS_EDIT_FIELD_SELECT
+    else:
+        # 新配置，需要填写所有字段
+        await query.message.reply_text("请输入你 QAS 服务的 Host：")
+        return HOST_SET
 
 async def host_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     host = str(update.message.text)
@@ -164,6 +204,177 @@ async def replace_set_button(update: Update, context: ContextTypes.DEFAULT_TYPE,
     return await upsert_qas_configuration_finish(update, context, session, user)
 
 
+# 部分修改相关函数
+async def qas_field_select_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+
+    # 初始化编辑数据结构
+    if "qas_edit_data" not in context.user_data:
+        context.user_data["qas_edit_data"] = {}
+
+    field_map = {
+        "qas_edit_host": ("host", "请输入你 QAS 服务的 Host：", QAS_EDIT_HOST),
+        "qas_edit_api_token": ("api_token", "请输入你 QAS 服务的 Api Token：", QAS_EDIT_API_TOKEN),
+        "qas_edit_save_path": ("save_path_prefix", "请输入你 QAS 服务的 TV Save Path 前缀：(开头不要带/，会自动补充)", QAS_EDIT_SAVE_PATH),
+        "qas_edit_movie_path": ("movie_save_path_prefix", "请输入你 QAS 服务的 MOVIE Save Path 前缀：(开头不要带/，会自动补充)", QAS_EDIT_MOVIE_PATH),
+        "qas_edit_pattern": ("pattern", "请输入你 QAS 服务的 Pattern：", QAS_EDIT_PATTERN),
+        "qas_edit_replace": ("replace", "请输入你 QAS 服务的 Replace：", QAS_EDIT_REPLACE),
+        "qas_finish_edit": ("finish", "", None)
+    }
+
+    action = query.data
+
+    if action == "qas_finish_edit":
+        # 完成编辑，准备保存
+        existing_config = session.query(QuarkAutoDownloadConfig).filter(
+            QuarkAutoDownloadConfig.user_id == user.id
+        ).first()
+
+        # 构建更新数据
+        if "configuration" not in context.user_data:
+            context.user_data["configuration"] = {"qas": {}}
+
+        edit_data = context.user_data.get("qas_edit_data", {})
+
+        # 只更新用户修改过的字段
+        if "host" in edit_data:
+            context.user_data["configuration"]["qas"]["host"] = edit_data["host"]
+        else:
+            context.user_data["configuration"]["qas"]["host"] = existing_config.host
+
+        if "api_token" in edit_data:
+            context.user_data["configuration"]["qas"]["api_token"] = edit_data["api_token"]
+        else:
+            # 使用现有配置的解密API token
+            decrypted_token = get_decrypted_api_token(existing_config)
+            context.user_data["configuration"]["qas"]["api_token"] = decrypted_token or ""
+
+        if "save_path_prefix" in edit_data:
+            context.user_data["configuration"]["qas"]["save_path_prefix"] = edit_data["save_path_prefix"]
+        else:
+            context.user_data["configuration"]["qas"]["save_path_prefix"] = existing_config.save_path_prefix
+
+        if "movie_save_path_prefix" in edit_data:
+            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = edit_data["movie_save_path_prefix"]
+        else:
+            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = existing_config.movie_save_path_prefix
+
+        if "pattern" in edit_data:
+            context.user_data["configuration"]["qas"]["pattern"] = edit_data["pattern"]
+        else:
+            context.user_data["configuration"]["qas"]["pattern"] = existing_config.pattern
+
+        if "replace" in edit_data:
+            context.user_data["configuration"]["qas"]["replace"] = edit_data["replace"]
+        else:
+            context.user_data["configuration"]["qas"]["replace"] = existing_config.replace
+
+        # 清理编辑数据
+        context.user_data.pop("qas_edit_data", None)
+        return await upsert_qas_configuration_finish(update, context, session, user)
+
+    elif action in field_map:
+        field_name, prompt_text, next_state = field_map[action]
+        if field_name == "finish":
+            return await qas_field_select_handler(update, context, session, user)
+
+        # 保存当前编辑的字段状态
+        context.user_data["qas_edit_current_field"] = next_state
+
+        await update.effective_message.reply_text(
+            prompt_text,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")
+            ]])
+        )
+        return next_state
+
+
+async def qas_edit_field_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理编辑字段的输入"""
+    if not update.message:
+        return
+
+    current_state = context.user_data.get("qas_edit_current_field")
+    input_value = update.message.text
+
+    # 根据不同的字段进行特殊处理
+    if current_state == QAS_EDIT_HOST:
+        if input_value and input_value.endswith('/'):
+            input_value = input_value[:-1]
+    elif current_state in [QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH]:
+        input_value = '/' + str(input_value)
+        if input_value.endswith('/'):
+            input_value = input_value[:-1]
+
+    # 保存编辑的数据
+    if "qas_edit_data" not in context.user_data:
+        context.user_data["qas_edit_data"] = {}
+
+    field_mapping = {
+        QAS_EDIT_HOST: "host",
+        QAS_EDIT_API_TOKEN: "api_token",
+        QAS_EDIT_SAVE_PATH: "save_path_prefix",
+        QAS_EDIT_MOVIE_PATH: "movie_save_path_prefix",
+        QAS_EDIT_PATTERN: "pattern",
+        QAS_EDIT_REPLACE: "replace"
+    }
+
+    field_name = field_mapping.get(current_state)
+    if field_name:
+        context.user_data["qas_edit_data"][field_name] = input_value
+
+    # 回到字段选择界面
+    return await qas_show_edit_menu(update, context, session, user)
+
+
+async def qas_show_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """显示编辑菜单"""
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    edit_data = context.user_data.get("qas_edit_data", {})
+
+    # 显示当前配置和已修改的字段
+    host = edit_data.get("host", existing_config.host)
+    save_path = edit_data.get("save_path_prefix", existing_config.save_path_prefix)
+    movie_path = edit_data.get("movie_save_path_prefix", existing_config.movie_save_path_prefix)
+    pattern = edit_data.get("pattern", existing_config.pattern)
+    replace = edit_data.get("replace", existing_config.replace)
+
+    keyboard = [
+        [InlineKeyboardButton("🌐 Host", callback_data="qas_edit_host")],
+        [InlineKeyboardButton("🔑 Api Token", callback_data="qas_edit_api_token")],
+        [InlineKeyboardButton("📁 TV Save Path", callback_data="qas_edit_save_path")],
+        [InlineKeyboardButton("🎬 Movie Save Path", callback_data="qas_edit_movie_path")],
+        [InlineKeyboardButton("🎯 Pattern", callback_data="qas_edit_pattern")],
+        [InlineKeyboardButton("🔄 Replace", callback_data="qas_edit_replace")],
+        [InlineKeyboardButton("✅ 完成修改", callback_data="qas_finish_edit")],
+        [InlineKeyboardButton("❌ 取消", callback_data="cancel_upsert_configuration")]
+    ]
+
+    message = f"""
+<b>当前 QAS 配置：</b>
+🌐 <b>Host：</b> {host}
+🔑 <b>Api Token：</b> {'***' if edit_data.get('api_token') or existing_config.api_token else '未设置'}
+📁 <b>TV Save Path：</b> {save_path}
+🎬 <b>Movie Save Path：</b> {movie_path}
+🎯 <b>Pattern：</b> <code>{pattern}</code>
+🔄 <b>Replace：</b> <code>{replace}</code>
+
+请选择要修改的字段：
+    """
+
+    await update.effective_message.reply_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="html"
+    )
+    return QAS_EDIT_FIELD_SELECT
+
+
 async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     host = context.user_data["configuration"]["qas"]["host"]
     api_token = context.user_data["configuration"]["qas"]["api_token"]
@@ -175,17 +386,36 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
     # 加密敏感数据
     encrypted_api_token = encrypt_sensitive_data(api_token)
 
-    count = session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).count()
-    if count > 0:
-        session.query(QuarkAutoDownloadConfig).filter(QuarkAutoDownloadConfig.user_id == user.id).update({
-            QuarkAutoDownloadConfig.host: host,
-            QuarkAutoDownloadConfig.api_token: encrypted_api_token,
-            QuarkAutoDownloadConfig.save_path_prefix: save_path_prefix,
-            QuarkAutoDownloadConfig.movie_save_path_prefix: movie_save_path_prefix,
-            QuarkAutoDownloadConfig.pattern: pattern,
-            QuarkAutoDownloadConfig.replace: replace
-        })
+    # 查找现有配置
+    existing_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    if existing_config:
+        # 部分更新：只更新提供的字段
+        update_data = {}
+        if host != existing_config.host:
+            update_data[QuarkAutoDownloadConfig.host] = host
+        if encrypted_api_token != existing_config.api_token:
+            update_data[QuarkAutoDownloadConfig.api_token] = encrypted_api_token
+        if save_path_prefix != existing_config.save_path_prefix:
+            update_data[QuarkAutoDownloadConfig.save_path_prefix] = save_path_prefix
+        if movie_save_path_prefix != existing_config.movie_save_path_prefix:
+            update_data[QuarkAutoDownloadConfig.movie_save_path_prefix] = movie_save_path_prefix
+        if pattern != existing_config.pattern:
+            update_data[QuarkAutoDownloadConfig.pattern] = pattern
+        if replace != existing_config.replace:
+            update_data[QuarkAutoDownloadConfig.replace] = replace
+
+        if update_data:
+            session.query(QuarkAutoDownloadConfig).filter(
+                QuarkAutoDownloadConfig.user_id == user.id
+            ).update(update_data)
+            message = "QAS 配置已部分更新：\n"
+        else:
+            message = "QAS 配置没有变化：\n"
     else:
+        # 新增配置
         session.add(
             QuarkAutoDownloadConfig(
                 host=host,
@@ -197,15 +427,22 @@ async def upsert_qas_configuration_finish(update: Update, context: ContextTypes.
                 user_id=user.id
             )
         )
+        message = "QAS 配置已新增：\n"
+
     session.commit()
 
-    message = f"""
-<b>Host：</b> {host}
-<b>Api Token：</b> {api_token}
-<b>TV Save Path 前缀：</b> {save_path_prefix}
-<b>MOVIE Save Path 前缀：</b> {movie_save_path_prefix}
-<b>Pattern：</b> <code>{pattern}</code>
-<b>Replace：</b> <code>{replace}</code>
+    # 显示当前配置状态
+    current_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    message += f"""
+<b>Host：</b> {current_config.host}
+<b>Api Token：</b> {'***' if current_config.api_token else '未设置'}
+<b>TV Save Path 前缀：</b> {current_config.save_path_prefix}
+<b>MOVIE Save Path 前缀：</b> {current_config.movie_save_path_prefix}
+<b>Pattern：</b> <code>{current_config.pattern}</code>
+<b>Replace：</b> <code>{current_config.replace}</code>
 
 操作完成
         """
@@ -1292,6 +1529,49 @@ handlers = [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(replace_set_button),
                         pattern=r"^qas_replace_input:.*$"
+                )
+            ],
+            # 部分修改状态
+            QAS_EDIT_FIELD_SELECT: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_field_select_handler),
+                        pattern=r"^qas_edit_.*$"
+                )
+            ],
+            QAS_EDIT_HOST: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_API_TOKEN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_SAVE_PATH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_MOVIE_PATH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_PATTERN: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
+                )
+            ],
+            QAS_EDIT_REPLACE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_edit_field_set)
                 )
             ],
         },
