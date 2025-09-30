@@ -16,8 +16,21 @@ class Init:
     def __init__(self):
         self.engine = create_engine(f'sqlite:///{TG_DB_PATH}', echo=True)
         self.session_local = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        # # Initialize APScheduler tables first
+        # self.init_apscheduler_tables()
+        # Then initialize other database tables
         self.init_db()
+        # Finally initialize the scheduler for actual use
         self.init_apscheduler()
+
+    def init_apscheduler_tables(self):
+        """Initialize APScheduler tables without starting the scheduler"""
+        from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+
+        # Create a temporary jobstore to initialize tables
+        temp_jobstore = SQLAlchemyJobStore(url=f'sqlite:///{TG_DB_PATH}')
+        # This will create the necessary tables
+        temp_jobstore.start()
 
     def init_apscheduler(self):
         self.async_scheduler = AsyncIOScheduler(

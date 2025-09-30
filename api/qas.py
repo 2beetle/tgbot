@@ -40,7 +40,7 @@ QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QA
 QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(4)
 
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
-QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 12)
+QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 11)
 
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
@@ -234,42 +234,44 @@ async def qas_field_select_handler(update: Update, context: ContextTypes.DEFAULT
 
         # 构建更新数据
         if "configuration" not in context.user_data:
-            context.user_data["configuration"] = {"qas": {}}
+            context.user_data["configuration"] = {}
+        if "qas" not in context.user_data["configuration"]:
+            context.user_data["configuration"]["qas"] = {}
 
         edit_data = context.user_data.get("qas_edit_data", {})
 
-        # 只更新用户修改过的字段
+        # 只更新用户修改过的字段，处理现有配置不存在的情况
         if "host" in edit_data:
             context.user_data["configuration"]["qas"]["host"] = edit_data["host"]
         else:
-            context.user_data["configuration"]["qas"]["host"] = existing_config.host
+            context.user_data["configuration"]["qas"]["host"] = existing_config.host if existing_config else ""
 
         if "api_token" in edit_data:
             context.user_data["configuration"]["qas"]["api_token"] = edit_data["api_token"]
         else:
             # 使用现有配置的解密API token
-            decrypted_token = get_decrypted_api_token(existing_config)
+            decrypted_token = get_decrypted_api_token(existing_config) if existing_config else ""
             context.user_data["configuration"]["qas"]["api_token"] = decrypted_token or ""
 
         if "save_path_prefix" in edit_data:
             context.user_data["configuration"]["qas"]["save_path_prefix"] = edit_data["save_path_prefix"]
         else:
-            context.user_data["configuration"]["qas"]["save_path_prefix"] = existing_config.save_path_prefix
+            context.user_data["configuration"]["qas"]["save_path_prefix"] = existing_config.save_path_prefix if existing_config else ""
 
         if "movie_save_path_prefix" in edit_data:
             context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = edit_data["movie_save_path_prefix"]
         else:
-            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = existing_config.movie_save_path_prefix
+            context.user_data["configuration"]["qas"]["movie_save_path_prefix"] = existing_config.movie_save_path_prefix if existing_config else ""
 
         if "pattern" in edit_data:
             context.user_data["configuration"]["qas"]["pattern"] = edit_data["pattern"]
         else:
-            context.user_data["configuration"]["qas"]["pattern"] = existing_config.pattern
+            context.user_data["configuration"]["qas"]["pattern"] = existing_config.pattern if existing_config else ""
 
         if "replace" in edit_data:
             context.user_data["configuration"]["qas"]["replace"] = edit_data["replace"]
         else:
-            context.user_data["configuration"]["qas"]["replace"] = existing_config.replace
+            context.user_data["configuration"]["qas"]["replace"] = existing_config.replace if existing_config else ""
 
         # 清理编辑数据
         context.user_data.pop("qas_edit_data", None)
@@ -1567,8 +1569,10 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
         if index == int(task_in_update.get("id")):
             for k, v in task_in_update.items():
                 data['tasklist'][index][k] = v
-            data['tasklist'][index].pop('id')
-            data['tasklist'][index].pop('ai_params')
+            if 'id' in data['tasklist'][index]:
+                data['tasklist'][index].pop('id')
+            if 'ai_params' in data['tasklist'][index]:
+                data['tasklist'][index].pop('ai_params')
             if 'shareurl_ban' in data['tasklist'][index]:
                 data['tasklist'][index].pop('shareurl_ban')
             data['tasklist'][index]['startfid'] = ''
@@ -1848,7 +1852,7 @@ handlers = [
             QAS_EDIT_FIELD_SELECT: [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(qas_field_select_handler),
-                        pattern=r"^qas_edit_.*$"
+                        pattern=r"^qas_(edit_|finish_).*$"
                 )
             ],
             QAS_EDIT_HOST: [

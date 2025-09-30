@@ -287,33 +287,41 @@ async def emby_field_select_handler(update: Update, context: ContextTypes.DEFAUL
 
         # 构建更新数据
         if "configuration" not in context.user_data:
-            context.user_data["configuration"] = {"emby": {}}
+            context.user_data["configuration"] = {}
+        if "emby" not in context.user_data["configuration"]:
+            context.user_data["configuration"]["emby"] = {}
 
         edit_data = context.user_data.get("emby_edit_data", {})
 
-        # 只更新用户修改过的字段
+        # 只更新用户修改过的字段，处理现有配置不存在的情况
         if "host" in edit_data:
             context.user_data["configuration"]["emby"]["host"] = edit_data["host"]
         else:
-            context.user_data["configuration"]["emby"]["host"] = existing_config.host
+            context.user_data["configuration"]["emby"]["host"] = existing_config.host if existing_config else ""
 
         if "api_token" in edit_data:
             context.user_data["configuration"]["emby"]["api_token"] = edit_data["api_token"]
         else:
             # 使用现有配置的解密API token
-            decrypted_token = get_decrypted_emby_credentials(existing_config)[0]
+            if existing_config:
+                decrypted_token = get_decrypted_emby_credentials(existing_config)[0]
+            else:
+                decrypted_token = ""
             context.user_data["configuration"]["emby"]["api_token"] = decrypted_token or ""
 
         if "username" in edit_data:
             context.user_data["configuration"]["emby"]["username"] = edit_data["username"]
         else:
-            context.user_data["configuration"]["emby"]["username"] = existing_config.username
+            context.user_data["configuration"]["emby"]["username"] = existing_config.username if existing_config else ""
 
         if "password" in edit_data:
             context.user_data["configuration"]["emby"]["pwd"] = edit_data["password"]
         else:
             # 使用现有配置的解密密码
-            decrypted_password = get_decrypted_emby_credentials(existing_config)[2]
+            if existing_config:
+                decrypted_password = get_decrypted_emby_credentials(existing_config)[2]
+            else:
+                decrypted_password = ""
             context.user_data["configuration"]["emby"]["pwd"] = decrypted_password or ""
 
         # 清理编辑数据
@@ -509,7 +517,7 @@ handlers = [
             EMBY_EDIT_FIELD_SELECT: [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(emby_field_select_handler),
-                        pattern=r"^emby_edit_.*$"
+                        pattern=r"^emby_(edit_|finish_).*$"
                 )
             ],
             EMBY_EDIT_HOST: [
