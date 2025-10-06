@@ -940,12 +940,12 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
                 continue
             task_text = f"""
 🆔 <b>ID</b>：{index}
-📌 <b>任务名称</b>：{task.get('taskname')}
-📁 <b>保存路径</b>：{task.get('savepath')}
+📌 <b>任务名称</b>：{task.get('taskname', '未知')}
+📁 <b>保存路径</b>：{task.get('savepath', '未知')}
 🔗 <b>分享链接</b>：<a href="{task.get('shareurl')}">点我打开</a>
-🎯 <b>匹配规则</b>：<code>{data['tasklist'][index]['pattern']}</code>
-🔁 <b>替换模板</b>：<code>{data['tasklist'][index]['replace']}</code>
-🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+🎯 <b>匹配规则</b>：<code>{task.get('pattern', '未设置')}</code>
+🔁 <b>替换模板</b>：<code>{task.get('replace', '未设置')}</code>
+🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if task.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
 """
             if task.get('shareurl_ban'):
                 task_text += f"🚫：{task.get('shareurl_ban')}"
