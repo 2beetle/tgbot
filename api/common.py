@@ -159,7 +159,7 @@ EXAMPLE JSON OUTPUT:
         async_scheduler.add_job(
             'utils.job:send_reminder_message',
             trigger="interval",
-            minutes=60,
+            minutes=10,
             start_date=run_date,
             kwargs={
                 'message': remind_content,
@@ -172,7 +172,7 @@ EXAMPLE JSON OUTPUT:
         )
         reply_message = (
             f'我将会在 {run_date.strftime("%Y-%m-%d %H:%M:%S")} 提醒你 {remind_content}，'
-            f'若当时还未完成，我会每隔一小时再提醒一次，完成后记得点击提醒里的「完成」按钮哦'
+            f'若当时还未完成，我会每隔10分钟再提醒一次，完成后记得点击提醒里的「完成」按钮哦'
         )
 
     elif trigger == 'cron':

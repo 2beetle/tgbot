@@ -37,7 +37,7 @@ def get_decrypted_api_token(qas_config):
 HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
 QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH, QAS_EDIT_PATTERN, QAS_EDIT_REPLACE = range(6, 13)
 
-QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(4)
+QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_PATTERN_REPLACE_GENERATE, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(5)
 
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
 QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 11)
@@ -482,6 +482,9 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
             "replace": qas_config.replace,
             "is_multi_seasons": False,
             "quark_share_url_origin": quark_share_url,
+            "ai_generate_pattern_texts": {
+                'filename_with_4k': '文件名中带 4K 的文件'
+            }
         }
     })
 
@@ -610,20 +613,6 @@ async def qas_add_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE,
         })
 
         await update.effective_message.reply_text(
-            text="AI 根据分享链接中的文件内容生成筛选 4K 资源正则中..."
-        )
-        qas_config = session.query(QuarkAutoDownloadConfig).filter(
-            QuarkAutoDownloadConfig.user_id == user.id
-        ).first()
-        api_token = get_decrypted_api_token(qas_config)
-        if not api_token:
-            await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
-            return
-        qas = QuarkAutoDownload(api_token=api_token)
-        params = await qas.ai_generate_params(context.user_data['qas_add_task']['shareurl'], session=session, user_id=user.id)
-        context.user_data['qas_add_task']['ai_params'] = params
-
-        await update.effective_message.reply_text(
             text=f"拓展 save path ({context.user_data['qas_add_task']['savepath']})：",
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -662,17 +651,16 @@ async def qas_add_task_extra_save_path_set_button(update: Update, context: Conte
 
 
 async def qas_add_task_pattern_ask_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    params = context.user_data['qas_add_task']['ai_params']
     await update.effective_message.reply_text(
-        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n<b>AI生成 Pattern</b>：{params.get('pattern')}",
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"默认 Pattern",
                                      callback_data=f"qas_add_task_pattern_button:")
             ],
             [
-                InlineKeyboardButton(f"AI生成 Pattern",
-                                     callback_data=f"qas_add_task_pattern_button:ai_params")
+                InlineKeyboardButton(f"通过AI生成 Pattern",
+                                     callback_data=f"qas_add_task_ai_generate_pattern_button:")
             ],
             [
                 InlineKeyboardButton(f"❌ 取消新增操作", callback_data=f"cancel_qas_update_task")
@@ -702,6 +690,134 @@ async def qas_add_task_pattern_set_button(update: Update, context: ContextTypes.
         await update.effective_message.reply_text(f"任务Pattern使用默认配置：{pattern}")
 
     return await qas_add_task_pattern_ask_replace(update, context, session, user)
+
+
+async def qas_add_task_ai_ask_pattern_replace_button(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
+    quark_id, stoken, pdir_fid = await qas.get_quark_id_stoken_pdir_fid(url=context.user_data['qas_add_task']['shareurl'])
+    dir_details = await qas.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
+
+    files_text = '\n'.join([
+        f"🎥 {dir_detail['file_name']}"
+        for dir_detail in dir_details[:15]
+    ])
+
+    await update.effective_message.reply_text(
+        text=f'以下是 <a href="{context.user_data['qas_add_task']['shareurl']}">分享链接</a>的文件列表：\n {files_text} \n请你说出你想要匹配的效果：',
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([
+            [
+               InlineKeyboardButton(f"文件名中带 4K 的文件",
+                                    callback_data=f"qas_add_task_ai_generate_pattern_replace_button:filename_with_4k")
+           ],
+           [
+               InlineKeyboardButton(f"❌ 取消新增操作",
+                                    callback_data=f"cancel_qas_update_task")
+           ]
+        ])
+    )
+
+    return QAS_ADD_TASK_PATTERN_REPLACE_GENERATE
+
+
+async def qas_add_task_ai_generate_pattern_replace_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    await update.effective_message.reply_text(
+        text="AI 根据分享链接中的文件内容生成正则中..."
+    )
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
+    params = await qas.ai_generate_params(
+        url=context.user_data['qas_add_task']['shareurl'],
+        session=session,
+        user_id=user.id,
+        prompt=update.message
+    )
+    context.user_data['qas_add_task']['ai_params'] = params
+
+    await update.effective_message.reply_text(
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n<b>AI 生成 Pattern</b>：{context.user_data['qas_add_task']['ai_params']['pattern']}\n",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"默认 Pattern",
+                                     callback_data=f"qas_add_task_pattern_button:")
+            ],
+            [
+                InlineKeyboardButton(f"AI生成 Pattern",
+                                     callback_data=f"qas_add_task_pattern_button:ai_params")
+            ],
+            [
+                InlineKeyboardButton(f"通过AI生成 Pattern",
+                                     callback_data=f"qas_add_task_ai_generate_pattern_button:")
+            ],
+            [
+                InlineKeyboardButton(f"❌ 取消新增操作", callback_data=f"cancel_qas_update_task")
+            ]
+        ]),
+        parse_mode=ParseMode.HTML
+    )
+    return QAS_ADD_TASK_PATTERN_SET
+
+
+async def qas_add_task_ai_generate_pattern_replace_button(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    await update.effective_message.reply_text(
+        text="AI 根据分享链接中的文件内容生成正则中..."
+    )
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
+    params = await qas.ai_generate_params(
+        url=context.user_data['qas_add_task']['shareurl'],
+        session=session,
+        user_id=user.id,
+        prompt={context.user_data['qas_add_task']['ai_generate_pattern_texts'][update.callback_query.data.split(':')[1]]}
+    )
+    context.user_data['qas_add_task']['ai_params'] = params
+
+    await update.effective_message.reply_text(
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n<b>AI 生成 Pattern</b>：{context.user_data['qas_add_task']['ai_params']['pattern']}\n",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"默认 Pattern",
+                                     callback_data=f"qas_add_task_pattern_button:")
+            ],
+            [
+                InlineKeyboardButton(f"AI生成 Pattern",
+                                     callback_data=f"qas_add_task_pattern_button:ai_params")
+            ],
+            [
+                InlineKeyboardButton(f"通过AI生成 Pattern",
+                                     callback_data=f"qas_add_task_ai_generate_pattern_button:")
+            ],
+            [
+                InlineKeyboardButton(f"❌ 取消新增操作", callback_data=f"cancel_qas_update_task")
+            ]
+        ]),
+        parse_mode=ParseMode.HTML
+    )
+    return QAS_ADD_TASK_PATTERN_SET
+
 
 
 async def qas_add_task_pattern_ask_replace(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -1816,6 +1932,7 @@ async def qas_delete_task_confirm_handler(update: Update, context: ContextTypes.
         text=f"删除 QAS 任务 {task_name} 成功",
     )
     context.user_data['qas_delete_task_id'] = -1
+    await query.edit_message_reply_markup(reply_markup=None)
 
 
 async def qas_delete_task_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -2063,6 +2180,20 @@ handlers = [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_pattern_set_button),
                         pattern=r"^qas_add_task_pattern_button:.*$"
+                ),
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_ai_ask_pattern_replace_button),
+                        pattern=r"^qas_add_task_ai_generate_pattern_button:.*$"
+                )
+            ],
+            QAS_ADD_TASK_PATTERN_REPLACE_GENERATE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_ai_generate_pattern_replace_text)
+                ),
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_ai_generate_pattern_replace_button),
+                        pattern=r"^qas_add_task_ai_generate_pattern_replace_button:.*$"
                 )
             ],
             QAS_ADD_TASK_REPLACE_SET: [

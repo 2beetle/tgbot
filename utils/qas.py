@@ -209,7 +209,7 @@ class QuarkAutoDownload:
             result.append(paragraph)
         return result
 
-    async def ai_generate_params(self, url: str, session, user_id) -> dict:
+    async def ai_generate_params(self, url: str, session, user_id, prompt) -> dict:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
         files = [
@@ -217,12 +217,16 @@ class QuarkAutoDownload:
                "file_name": dir_detail['file_name'],
                "video_max_resolution": dir_detail['video_max_resolution'],
             }
-            for dir_detail in dir_details if "video_max_resolution" in dir_detail
+            for dir_detail in dir_details
         ]
-        prompt = rf"""
-1. 请从以下文件列表中根据文件的file_name编写正则表达式只提取video_max_resolution为4k的文件并且还需要提取 file_name 中的季数和集数和文件后缀，如果file_name中没有季数的信息，则只需要提取集数
+        prompt = rf"""\
+用户要求：\
+{prompt}\
+
+你需要做：
+1. 请从以下文件列表中根据文件的file_name编写正则表达式只提取符合<用户要求>的文件并且还需要提取符合<用户要求>的文件的 file_name 中的季数和集数和文件后缀，如果file_name中没有季数的信息，则只需要提取集数
 {files}
-2. 根据编写的正则匹配式匹配到video_max_resolution为4k的文件的file_name并提取到 file_name 中的季数和集数和文件后缀后，用于生成新 file_name，如果前面的正则没有提取到季数的信息，则默认为第一季
+2. 根据编写的正则匹配式匹配到file_name并提取到 file_name 中的季数和集数和文件后缀后，用于生成新 file_name，如果前面的正则没有提取到季数的信息，则默认为第一季
 
 以下是一些示例，请你按照示例的规则进行生成：
 | pattern                                   | replace                    | 效果                                                                 |
