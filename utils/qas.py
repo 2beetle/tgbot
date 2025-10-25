@@ -209,6 +209,65 @@ class QuarkAutoDownload:
             result.append(paragraph)
         return result
 
+    async def ai_generate_replace(self, url: str, session, user_id, prompt) -> dict:
+        quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
+        dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
+        files = [
+            {
+               "file_name": dir_detail['file_name'],
+               "video_max_resolution": dir_detail['video_max_resolution'],
+            }
+            for dir_detail in dir_details
+        ]
+        # 优化提示信息，专注于Replace生成
+        enhanced_prompt = f"""{prompt}
+
+基于以下文件列表生成合适的Replace替换模板：
+{files}
+
+你的任务：
+1. 分析文件列表中的文件名格式和结构
+2. 根据用户要求生成能正确提取文件信息的Pattern（如果需要）
+3. 生成相应的Replace替换模板，确保与Pattern匹配格式兼容
+
+Replace生成规则：
+- 如果Pattern提取了季数(S)和集数(E)，Replace应该为 `S{{SXX}}E{{E}}.{{EXT}}`
+- 如果Pattern只提取了集数(E)，Replace应该为 `S01E{{E}}.{{EXT}}` (默认第一季)
+- 如果Pattern没有提取季集信息，Replace应该为 `{{ORIGINAL_NAME}}.{{EXT}}`
+- 对于电影，Replace通常为 `{{TITLE}}.{{EXT}}`
+
+常用变量：
+- `{{SXX}}`: 季数，格式化为两位数
+- `{{E}}`: 集数，保持原始格式
+- `{{EXT}}`: 文件扩展名
+- `{{TITLE}}`: 电影/剧集标题
+- `{{ORIGINAL_NAME}}`: 原始文件名（不含扩展名）
+
+必须执行的注意事项：
+1. Replace模板必须与Pattern的提取组兼容
+2. 使用传统的反向引用语法：\1, \2 等，而不是${{1}}或{{1}}
+3. Pattern中不要使用命名分组
+4. 只返回JSON格式结果：{{"pattern": "...", "replace": "..."}}"""
+        ai_analysis = await openapi_chat(
+            role="你是一个编写正则表达式的专家，善于从元素列表中通过编写正则提取到想要的元素",
+            prompt=enhanced_prompt,
+            session=session,
+            user_id=user_id
+        )
+
+        # 清理可能的非JSON内容
+        ai_analysis = ai_analysis.strip()
+        if ai_analysis.startswith("```json"):
+            ai_analysis = ai_analysis[7:]
+        if ai_analysis.endswith("```"):
+            ai_analysis = ai_analysis[:-3]
+
+        generate_params = json.loads(ai_analysis)
+
+        generate_params['replace'] = generate_params['replace'].replace("$", "\\")
+
+        return generate_params
+
     async def ai_generate_params(self, url: str, session, user_id, prompt) -> dict:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
