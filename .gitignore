@@ -1,3 +1,7 @@
 .venv
 .idea
 *.db
+
+# AI generated files
+CLAUDE.md
+.claude/
