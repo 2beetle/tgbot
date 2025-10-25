@@ -712,7 +712,7 @@ async def qas_add_task_ai_ask_pattern_replace_button(update: Update, context: Co
     ])
 
     await update.effective_message.reply_text(
-        text=f'以下是 <a href="{context.user_data['qas_add_task']['shareurl']}">分享链接</a>的文件列表：\n {files_text} \n请你说出你想要匹配的效果：',
+        text=f'📁 <a href="{context.user_data['qas_add_task']['shareurl']}">分享链接</a> 中的文件列表：\n\n{files_text}\n\n💡 请描述你希望匹配的文件类型或特征：',
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
             [
@@ -1330,7 +1330,7 @@ async def qas_task_update_ai_generate_pattern(update: Update, context: ContextTy
     ])
 
     await update.effective_message.reply_text(
-        text=f'以下是 <a href="{share_url}">分享链接</a>的文件列表：\n {files_text} \n请你说出你想要匹配的效果：',
+        text=f'📁 <a href="{share_url}">分享链接</a> 中的文件列表：\n\n{files_text}\n\n💡 请描述你希望匹配的文件类型或特征：',
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
             [
@@ -1473,7 +1473,7 @@ async def qas_task_update_ai_generate_replace(update: Update, context: ContextTy
     ])
 
     await update.effective_message.reply_text(
-        text=f'以下是 <a href="{share_url}">分享链接</a>的文件列表：\n {files_text} \n请你说出你想要匹配的效果：',
+        text=f'📁 <a href="{share_url}">分享链接</a> 中的文件列表：\n\n{files_text}\n\n💡 请描述你希望匹配的文件类型或特征：',
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
             [
