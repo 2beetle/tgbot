@@ -1349,8 +1349,6 @@ async def qas_task_update_ai_generate_pattern(update: Update, context: ContextTy
 
 async def qas_task_update_ai_generate_pattern_replace_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """处理AI生成Pattern的文本输入"""
-    query = update.callback_query
-    await query.answer()
     await update.effective_message.reply_text(
         text="🤖 AI 根据分享链接中的文件内容生成正则中..."
     )
