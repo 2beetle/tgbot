@@ -1002,6 +1002,8 @@ Ai识别季数完成，识别结果为：
             parse_mode="html",
         )
         for season, fid in seasons_fid.items():
+            season_num = await QuarkAutoDownload.extract_all_two_digit_numbers(season)
+            replace = f"S{season_num[0]}E{{E}}.{{EXT}}"
             await qas_add_task(
                 qas_instance=qas,
                 qas_config_instance=qas_config,
@@ -1009,7 +1011,7 @@ Ai识别季数完成，识别结果为：
                 share_url=context.user_data['qas_add_task']['quark_share_url_origin'] + fid,
                 save_path=os.path.join(context.user_data['qas_add_task']['savepath'], season),
                 pattern=context.user_data['qas_add_task']['pattern'],
-                replace=context.user_data['qas_add_task']['replace'],
+                replace=replace,
                 aria2=context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True),
                 update=update,
                 context=context

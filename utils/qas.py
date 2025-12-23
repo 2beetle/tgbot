@@ -419,9 +419,14 @@ Replace生成规则：
         logger.info(f"整理后结果 {seasons_fid}")
         return seasons_fid, extract_seasons
 
+    @classmethod
+    async def extract_all_two_digit_numbers(cls, text):
+      """提取所有数字并转为两位格式"""
+      numbers = re.findall(r'\d+', text)
+      return [num.zfill(2)[-2:] for num in numbers]
+
 
 
 if __name__ == '__main__':
     qas = QuarkAutoDownload(api_token='')
-    url = "https://pan.quark.cn/s/351409f4f293#/list/share/e9f31ac4f4fc4832a01315787d834613"
-    asyncio.run(qas.ai_classify_seasons(url))
+    print(asyncio.run())
