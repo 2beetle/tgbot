@@ -215,7 +215,7 @@ class QuarkAutoDownload:
         files = [
             {
                "file_name": dir_detail['file_name'],
-               "video_max_resolution": dir_detail['video_max_resolution'],
+               "video_max_resolution": dir_detail.get('video_max_resolution'),
             }
             for dir_detail in dir_details
         ]
@@ -274,7 +274,7 @@ Replace生成规则：
         files = [
             {
                "file_name": dir_detail['file_name'],
-               "video_max_resolution": dir_detail['video_max_resolution'],
+               "video_max_resolution": dir_detail.get('video_max_resolution'),
             }
             for dir_detail in dir_details
         ]
