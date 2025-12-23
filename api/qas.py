@@ -40,7 +40,7 @@ QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QA
 QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_PATTERN_REPLACE_GENERATE, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(5)
 
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
-QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_PATTERN_GENERATE, QAS_TASK_UPDATE_REPLACE_GENERATE, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 13)
+QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_SAVEPATH, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_PATTERN_GENERATE, QAS_TASK_UPDATE_REPLACE_GENERATE, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 14)
 
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
@@ -652,7 +652,7 @@ async def qas_add_task_extra_save_path_set_button(update: Update, context: Conte
 
 async def qas_add_task_pattern_ask_pattern(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     await update.effective_message.reply_text(
-        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n",
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：<code>{context.user_data['qas_add_task']['pattern']}</code>\n",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"默认 Pattern",
@@ -752,7 +752,7 @@ async def qas_add_task_ai_generate_pattern_replace_text(update: Update, context:
     context.user_data['qas_add_task']['ai_params'] = params
 
     await update.effective_message.reply_text(
-        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n<b>AI 生成 Pattern</b>：{context.user_data['qas_add_task']['ai_params']['pattern']}\n",
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：<code>{context.user_data['qas_add_task']['pattern']}</code>\n<b>AI 生成 Pattern</b>：<code>{context.user_data['qas_add_task']['ai_params']['pattern']}</code>\n",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"默认 Pattern",
@@ -796,7 +796,7 @@ async def qas_add_task_ai_generate_pattern_replace_button(update: Update, contex
     context.user_data['qas_add_task']['ai_params'] = params
 
     await update.effective_message.reply_text(
-        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：{context.user_data['qas_add_task']['pattern']}\n<b>AI 生成 Pattern</b>：{context.user_data['qas_add_task']['ai_params']['pattern']}\n",
+        text=f"请输入或选择 <b>Pattern</b>：\n<b>默认 Pattern</b>：<code>{context.user_data['qas_add_task']['pattern']}</code>\n<b>AI 生成 Pattern</b>：<code>{context.user_data['qas_add_task']['ai_params']['pattern']}</code>\n",
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"默认 Pattern",
@@ -824,7 +824,7 @@ async def qas_add_task_pattern_ask_replace(update: Update, context: ContextTypes
     params = context.user_data['qas_add_task'].get('ai_params')
     if params:
         await update.effective_message.reply_text(
-            text=f"请输入或选择 <b>Replace</b>：\n默认 Replace: {context.user_data['qas_add_task']['replace']}\nAI生成 Replace：{params.get('replace')}",
+            text=f"请输入或选择 <b>Replace</b>：\n默认 Replace: <code>{context.user_data['qas_add_task']['replace']}</code>\nAI生成 Replace：<code>{params.get('replace')}</code>",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(f"默认 Replace", callback_data=f"qas_add_task_replace_button:")
@@ -841,7 +841,7 @@ async def qas_add_task_pattern_ask_replace(update: Update, context: ContextTypes
         )
     else:
         await update.effective_message.reply_text(
-            text=f"请输入或选择 <b>Replace</b>：\n默认 Replace: {context.user_data['qas_add_task']['replace']}\n",
+            text=f"请输入或选择 <b>Replace</b>：\n默认 Replace: <code>{context.user_data['qas_add_task']['replace']}</code>\n",
             reply_markup=InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(f"默认 Replace", callback_data=f"qas_add_task_replace_button:")
@@ -1135,6 +1135,7 @@ async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
     # 显示任务信息并让用户选择要修改的字段
     keyboard = [
         [InlineKeyboardButton("🔗 分享链接", callback_data="qas_task_update_share_url")],
+        [InlineKeyboardButton("📁 保存路径", callback_data="qas_task_update_savepath")],
         [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
         [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
         [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
@@ -1183,6 +1184,20 @@ async def qas_task_update_field_select_handler(update: Update, context: ContextT
             ]])
         )
         return QAS_TASK_UPDATE_SHARE_URL
+    elif action == "qas_task_update_savepath":
+        # 修改保存路径
+        original_task = context.user_data.get("qas_update_task_original", {})
+        current_savepath = original_task.get('savepath')
+
+        context.user_data["qas_update_current_field"] = QAS_TASK_UPDATE_SAVEPATH
+        await update.effective_message.reply_text(
+            f"请输入新的保存路径：\n<b>当前保存路径</b>: <code>{current_savepath}</code>",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")
+            ]]),
+            parse_mode="html"
+        )
+        return QAS_TASK_UPDATE_SAVEPATH
     elif action == "qas_task_update_pattern":
         # 修改Pattern
         original_task = context.user_data.get("qas_update_task_original", {})
@@ -1604,6 +1619,22 @@ async def qas_task_update_aria2_set(update: Update, context: ContextTypes.DEFAUL
     return await qas_task_update_show_menu(update, context, session, user)
 
 
+async def qas_task_update_savepath_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理保存路径设置"""
+    if not update.message:
+        return
+
+    savepath = update.message.text
+    # 确保路径以 / 开头
+    if not savepath.startswith('/'):
+        savepath = '/' + savepath
+
+    # 保存编辑的数据
+    context.user_data['qas_update_task_edit_data']['savepath'] = savepath
+    await update.message.reply_text(f"保存路径已更新为：{savepath}")
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
 async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """显示更新菜单"""
     original_task = context.user_data.get("qas_update_task_original", {})
@@ -1612,12 +1643,14 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
 
     # 显示当前配置和已修改的字段
     share_url = edit_data.get("shareurl", original_task.get("shareurl"))
+    savepath = edit_data.get("savepath", original_task.get("savepath"))
     pattern = edit_data.get("pattern", original_task.get("pattern"))
     replace = edit_data.get("replace", original_task.get("replace"))
     aria2_auto_download = edit_data.get("aria2_auto_download", original_task.get("addition", {}).get("aria2", {}).get("auto_download", False))
 
     keyboard = [
         [InlineKeyboardButton("🔗 分享链接", callback_data="qas_task_update_share_url")],
+        [InlineKeyboardButton("📁 保存路径", callback_data="qas_task_update_savepath")],
         [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
         [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
         [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
@@ -1629,7 +1662,7 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
 <b>任务更新状态：</b>
 🆔 <b>ID：</b> {task_id}
 📌 <b>任务名称：</b> {original_task.get('taskname')}
-📁 <b>保存路径：</b> <code>{original_task.get('savepath')}</code>
+📁 <b>保存路径：</b> <code>{savepath}</code>
 🔗 <b>分享链接：</b> <a href="{share_url}">点我查看</a>
 🎯 <b>Pattern：</b> <code>{pattern}</code>
 🔄 <b>Replace：</b> <code>{replace}</code>
@@ -1665,6 +1698,8 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
     # 只更新用户修改过的字段
     if "shareurl" in edit_data:
         update_data["shareurl"] = edit_data["shareurl"]
+    if "savepath" in edit_data:
+        update_data["savepath"] = edit_data["savepath"]
     if "pattern" in edit_data:
         update_data["pattern"] = edit_data["pattern"]
     if "replace" in edit_data:
@@ -2140,6 +2175,12 @@ handlers = [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_share_url_select),
                         pattern=r"^qas_task_update_share_url_select:.*$"
+                )
+            ],
+            QAS_TASK_UPDATE_SAVEPATH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_savepath_set)
                 )
             ],
             QAS_TASK_UPDATE_PATTERN: [
