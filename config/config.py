@@ -40,7 +40,7 @@ ROLE_COMMANDS = {
                          'search_tv', 'search_movie',
                          'search_media_resource',
                          "upsert_configuration",
-                         'qas_list_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
+                         'qas_list_task', 'qas_list_err_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
                          'emby_list_resource', 'emby_list_notification'
                          ],
 
@@ -49,7 +49,7 @@ ROLE_COMMANDS = {
                           'search_media_resource',
                           'remind', 'list_my_job', 'delete_job',
                           "upsert_configuration",
-                          'qas_list_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
+                          'qas_list_task', 'qas_list_err_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
                           'emby_list_resource', 'emby_list_notification'
                           ],
 
@@ -58,7 +58,7 @@ ROLE_COMMANDS = {
                           'search_media_resource',
                           'remind', 'list_my_job', 'delete_job',
                           "upsert_configuration",
-                          'qas_list_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
+                          'qas_list_task', 'qas_list_err_task', 'qas_add_task', 'qas_delete_task', 'qas_run_script', 'qas_view_task_regex',
                           'emby_list_resource', 'emby_list_notification'
                           ],
     }

@@ -1103,6 +1103,74 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
             )
 
 
+@command(name='qas_list_err_task', description="列出 QAS 异常任务", args="{任务名称}")
+async def qas_list_err_task(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    def is_subsequence(small, big):
+        it = iter(big)
+        return all(ch in it for ch in small)
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    if not qas_config:
+        await update.effective_message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
+
+    if len(context.args) > 0:
+        task_name = ' '.join(context.args)
+    else:
+        task_name = None
+
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
+    data = await qas.data(host=qas_config.host)
+    task_list = [task for task in data.get("tasklist", []) if task.get('shareurl_ban')]
+
+    if len(task_list) == 0:
+        await update.effective_message.reply_text(
+            text=f"未查询到 <b>{task_name}</b> 相关任务",
+            parse_mode="html",
+        )
+
+    else:
+        for index, task in enumerate(data.get("tasklist", [])):
+            if task not in task_list:
+                continue
+            task_text = f"""
+🆔 <b>ID</b>：{index}
+📌 <b>任务名称</b>：{task.get('taskname', '未知')}
+📁 <b>保存路径</b>：{task.get('savepath', '未知')}
+🔗 <b>分享链接</b>：<a href="{task.get('shareurl')}">点我打开</a>
+🎯 <b>匹配规则</b>：<code>{task.get('pattern', '未设置')}</code>
+🔁 <b>替换模板</b>：<code>{task.get('replace', '未设置')}</code>
+🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if task.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
+"""
+            if task.get('shareurl_ban'):
+                task_text += f"🚫：{task.get('shareurl_ban')}"
+            else:
+                task_text += f"✅：正常"
+            await update.effective_message.reply_text(
+                text=task_text,
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{index}")
+                    ]
+                ]),
+                parse_mode=ParseMode.HTML,
+            )
+
+
 # @command(name='qas_update_task', description="更新 QAS 任务", args="{qas task id}")
 async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
