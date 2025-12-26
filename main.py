@@ -25,6 +25,7 @@ from api import job
 from api import qas
 from api import emby
 from api import ai_config
+from api import user_config
 
 from utils.job import tag_done_jobs
 
@@ -44,6 +45,7 @@ def register_extra_handlers(app):
         'api.qas',
         'api.emby',
         'api.ai_config',
+        'api.user_config',
     ]
     for module_path in modules:
         try:

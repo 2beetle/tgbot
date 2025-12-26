@@ -3,7 +3,7 @@ from html import escape
 
 import aiohttp
 
-from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD
+from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD, CLOUD_TYPE_MAP
 
 
 class CloudSaver:
@@ -13,17 +13,7 @@ class CloudSaver:
         self.host = CLOUD_SAVER_HOST
         self._session = None
         self._token = None
-        self.cloud_type_map = {
-            "QUARK": "夸克网盘",
-            "ALIPAN": "阿里云盘",
-            "ALIYUN": "阿里云盘",
-            "123PAN": "123网盘",
-            "PAN123": "123网盘",
-            "XUNLEI": "迅雷云盘",
-            "WETRANSFER": "WeTransfer",
-            "BAIDUPAN": "百度网盘",
-            "UC": "UC网盘",
-        }
+        self.cloud_type_map = CLOUD_TYPE_MAP
 
     async def _get_session(self):
         if self._session is None:
@@ -92,7 +82,7 @@ class CloudSaver:
             result.append('\n'.join(lines))
         return result
 
-    async def format_links_by_cloud_type(self, data, links_valid: dict):
+    async def format_links_by_cloud_type(self, data, links_valid: dict, preferred_clouds=None):
         result = []
         # 按网盘类型分组，每组存 (title, link) 列表
         cloudtype_links = defaultdict(list)
@@ -107,6 +97,11 @@ class CloudSaver:
                         cloudtype_links[raw_type].append((title, url))
 
         for cloud_type, resources in cloudtype_links.items():
+            cloud_type_name = self.cloud_type_map.get(cloud_type)
+            # 如果用户配置了常用云盘，跳过不在配置中的网盘类型
+            if preferred_clouds is not None and cloud_type_name not in preferred_clouds:
+                continue
+
             # 过滤掉无效状态的链接，只保留"有效"或"状态未知"的链接
             valid_resources = [
                 resource for resource in resources

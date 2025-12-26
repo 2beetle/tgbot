@@ -3,16 +3,15 @@ import os
 
 import aiohttp
 
+from config.config import CLOUD_TYPE_MAP
+
 logger = logging.getLogger(__name__)
 
 class PanSou(object):
     def __init__(self):
         self.host = os.getenv('PANSOU_HOST')
         self._session = None
-        self.cloud_type_map = {
-            "quark": "夸克网盘",
-            "baidu": "百度网盘"
-        }
+        self.cloud_type_map = CLOUD_TYPE_MAP
 
     async def _get_session(self):
         if self._session is None:
@@ -42,9 +41,13 @@ class PanSou(object):
                 return None
             return await resp.json()
 
-    async def format_links_by_cloud_type(self, result: dict, links_valid: dict):
+    async def format_links_by_cloud_type(self, result: dict, links_valid: dict, preferred_clouds=None):
         messages = list()
         for cloud_type, resources in result.get('merged_by_type').items():
+            cloud_type_name = self.cloud_type_map.get(cloud_type)
+            # 如果用户配置了常用云盘，跳过不在配置中的网盘类型
+            if preferred_clouds is not None and cloud_type_name not in preferred_clouds:
+                continue
             # 过滤掉无效状态的链接，只保留"有效"或"状态未知"的链接
             valid_resources = [
                 resource for resource in resources

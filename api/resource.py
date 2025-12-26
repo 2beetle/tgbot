@@ -8,7 +8,8 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes, CallbackQueryHandler
 
 from api.base import command
-from config.config import get_allow_roles_command_map
+from api.user_config import get_user_preferred_cloud_types
+from config.config import get_allow_roles_command_map, CLOUD_TYPE_QUARK
 from db.models.log import OperationLog, OperationType
 from db.models.user import User
 from utils.command_middleware import depends
@@ -33,6 +34,11 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
     search_content = context.args[0]
+
+    # 获取用户配置的常用云盘类型
+    preferred_clouds = get_user_preferred_cloud_types(user)
+    if preferred_clouds:
+        logger.info(f"用户 {user.username} 配置的常用云盘: {preferred_clouds}")
 
     cloud_saver = context.bot_data['cloud_saver']
     p = PanSou()
@@ -63,26 +69,34 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
             for link in item.get("cloudLinks", []):
                 url = link.get("link")
                 if url:
-                    all_links[cloud_saver.cloud_type_map.get(link.get("cloudType", "").upper())].append(url)
-                    links_valid[url] = '状态未知'
+                    cloud_type_name = cloud_saver.cloud_type_map.get(link.get("cloudType", "").upper())
+                    # 如果用户配置了常用云盘，只添加用户配置的云盘类型
+                    if preferred_clouds is None or cloud_type_name in preferred_clouds:
+                        logger.info(f"<UNK> {cloud_type_name} <UNK> {url}")
+                        all_links[cloud_type_name].append(url)
+                        links_valid[url] = '状态未知'
     # ps
     for cloud_type, resources in ps_result.get('merged_by_type').items():
-        for resource in resources:
-            all_links[p.cloud_type_map.get(cloud_type)].append(resource.get('url'))
-            links_valid[resource.get('url')] = '状态未知'
+        cloud_type_name = p.cloud_type_map.get(cloud_type)
+        # 如果用户配置了常用云盘，只处理用户配置的云盘类型
+        if preferred_clouds is None or cloud_type_name in preferred_clouds:
+            for resource in resources:
+                logger.info(f"<UNK> {cloud_type_name} <UNK> {url}")
+                all_links[cloud_type_name].append(resource.get('url'))
+                links_valid[resource.get('url')] = '状态未知'
 
     # 查看夸克链接的状态
     quark = Quark()
-    quark_links_valid = await quark.links_valid(links=all_links.get('夸克网盘', []))
+    quark_links_valid = await quark.links_valid(links=all_links.get(CLOUD_TYPE_QUARK, []))
 
     # 更新各网盘链接状态
     links_valid.update(quark_links_valid)
 
     # cs
-    cs_messages = await cloud_saver.format_links_by_cloud_type(cs_result, links_valid)
+    cs_messages = await cloud_saver.format_links_by_cloud_type(cs_result, links_valid, preferred_clouds)
 
     # ps
-    ps_messages = await p.format_links_by_cloud_type(ps_result, links_valid)
+    ps_messages = await p.format_links_by_cloud_type(ps_result, links_valid, preferred_clouds)
 
     messages = cs_messages + ps_messages
 
@@ -94,6 +108,14 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         )
     )
     session.commit()
+
+    if not messages:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"未找到资源 {search_content}",
+            parse_mode="html"
+        )
+        return
 
     for message in messages:
         try:
