@@ -130,8 +130,8 @@ async def emby_refresh_library(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     emby = Emby(host=emby_config.host, token=api_token)
-    resp = await emby.refresh_library(int(item_id))
-    if resp.ok:
+    result = await emby.refresh_library(int(item_id))
+    if result:
         await update.effective_message.reply_text("刷新媒体库成功")
     else:
         await update.effective_message.reply_text("刷新媒体库失败")

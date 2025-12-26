@@ -53,7 +53,7 @@ class QuarkAutoDownload:
         ) as resp:
             if not resp.ok:
                 logger.error(f'Failed to add task {task_name}, error: {resp.text}')
-            return resp
+            return await resp.json()
 
     async def update(self, host, data):
         session = await self._get_session()

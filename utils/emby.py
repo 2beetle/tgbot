@@ -106,7 +106,7 @@ class Emby:
             }
         ) as resp:
             if resp.status == 200:
-                return resp
+                return True
             else:
                 error_text = await resp.text()
                 logger.error(f"Emby.refresh_library: {error_text}")

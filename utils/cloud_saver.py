@@ -56,10 +56,11 @@ class CloudSaver:
             params=params,
             headers={'Authorization': f'Bearer {token}'}
         ) as resp:
-            return resp
+            data = await resp.json()
+            return data
 
     async def search(self, search_content):
-        return self.get('/api/search', {'keyword': search_content})
+        return await self.get('/api/search', {'keyword': search_content})
 
     async def format_links_by_channel(self, data):
         result = []

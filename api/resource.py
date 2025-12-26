@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     async def cs_task(search_content: str):
         cloud_saver = context.bot_data['cloud_saver']
-        resp = await cloud_saver.search(search_content)
-        return resp.json().get('data')
+        data = await cloud_saver.search(search_content)
+        return data.get('data')
 
     async def ps_task(search_content: str):
         p = PanSou()
