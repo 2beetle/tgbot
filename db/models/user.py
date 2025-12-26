@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
 from db.models.base import Base, CreateTimeUpdateTimeBase
@@ -19,3 +19,4 @@ class User(Base, CreateTimeUpdateTimeBase):
     username = Column(String, nullable=False)
     role_id = Column(Integer, ForeignKey('role.id'), nullable=False)
     role = relationship("Role", backref="users")
+    configuration = Column(JSON, nullable=True, default=None)

@@ -1,9 +1,9 @@
 from collections import defaultdict
 from html import escape
 
-import requests
+import aiohttp
 
-from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD
+from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD, CLOUD_TYPE_MAP
 
 
 class CloudSaver:
@@ -11,31 +11,46 @@ class CloudSaver:
         self.username = CLOUD_SAVER_USERNAME
         self.password = CLOUD_SAVER_PASSWORD
         self.host = CLOUD_SAVER_HOST
-        self.cloud_type_map = {
-            "QUARK": "夸克网盘",
-            "ALIPAN": "阿里云盘",
-            "ALIYUN": "阿里云盘",
-            "123PAN": "123网盘",
-            "PAN123": "123网盘",
-            "XUNLEI": "迅雷云盘",
-            "WETRANSFER": "WeTransfer",
-            "BAIDUPAN": "百度网盘",
-            "UC": "UC网盘",
-        }
+        self._session = None
+        self._token = None
+        self.cloud_type_map = CLOUD_TYPE_MAP
 
-    def get(self, url, params=None):
-        token = requests.post(
-            f'{self.host}/api/user/login',
-            json={'username': self.username, 'password': self.password}
-        ).json().get('data').get('token')
-        return requests.get(
+    async def _get_session(self):
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def _get_token(self):
+        if self._token is None:
+            session = await self._get_session()
+            async with session.post(
+                f'{self.host}/api/user/login',
+                json={'username': self.username, 'password': self.password}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._token = data.get('data', {}).get('token')
+        return self._token
+
+    async def close(self):
+        if self._session:
+            await self._session.close()
+            self._session = None
+            self._token = None
+
+    async def get(self, url, params=None):
+        token = await self._get_token()
+        session = await self._get_session()
+        async with session.get(
             url=f'{self.host}/{url}',
             params=params,
             headers={'Authorization': f'Bearer {token}'}
-        )
+        ) as resp:
+            data = await resp.json()
+            return data
 
     async def search(self, search_content):
-        return self.get('/api/search', {'keyword': search_content})
+        return await self.get('/api/search', {'keyword': search_content})
 
     async def format_links_by_channel(self, data):
         result = []
@@ -67,7 +82,7 @@ class CloudSaver:
             result.append('\n'.join(lines))
         return result
 
-    async def format_links_by_cloud_type(self, data, links_valid: dict):
+    async def format_links_by_cloud_type(self, data, links_valid: dict, preferred_clouds=None):
         result = []
         # 按网盘类型分组，每组存 (title, link) 列表
         cloudtype_links = defaultdict(list)
@@ -82,9 +97,20 @@ class CloudSaver:
                         cloudtype_links[raw_type].append((title, url))
 
         for cloud_type, resources in cloudtype_links.items():
-            for i in range(0, len(resources), 25):
+            cloud_type_name = self.cloud_type_map.get(cloud_type)
+            # 如果用户配置了常用云盘，跳过不在配置中的网盘类型
+            if preferred_clouds is not None and cloud_type_name not in preferred_clouds:
+                continue
+
+            # 过滤掉无效状态的链接，只保留"有效"或"状态未知"的链接
+            valid_resources = [
+                resource for resource in resources
+                if links_valid.get(resource[1], '状态未知') in ('有效', '状态未知')
+            ]
+
+            for i in range(0, len(valid_resources), 25):
                 lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>（cs资源）"]
-                chunk_data = resources[i:i + 25]
+                chunk_data = valid_resources[i:i + 25]
                 for resource in chunk_data:
                     lines.append(f'🔗 <a href="{resource[1]}">{resource[0].replace('<', '[').replace('>', ']')}</a> （{links_valid.get(resource[1], '状态未知')}）')
 

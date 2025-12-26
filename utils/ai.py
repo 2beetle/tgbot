@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional
 
-import requests
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +92,17 @@ async def openapi_chat(role: str, prompt: str, host: str = None, api_key: str = 
         "Authorization": f"Bearer {api_key}",
     }
     try:
-        resp = requests.post(url=host, headers=headers, json=data, timeout=90)
-        if not resp.ok:
-            logger.error(f'[{resp.status_code}] ai chat error: {resp.text}')
-            print(prompt)
-            return None
-        json_data = resp.json()
-        result = json_data['choices'][0]['message']['content']
-        return result
+        timeout = aiohttp.ClientTimeout(total=90)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url=host, headers=headers, json=data) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logger.error(f'[{resp.status}] ai chat error: {error_text}')
+                    print(prompt)
+                    return None
+                json_data = await resp.json()
+                result = json_data['choices'][0]['message']['content']
+                return result
 
     except Exception as e:
         logger.error(f'ai chat error: {e}')

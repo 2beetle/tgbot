@@ -919,7 +919,7 @@ async def qas_add_task_aria2_set_button(update: Update, context: ContextTypes.DE
 
 async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     async def qas_add_task(qas_instance, qas_config_instance, task_name: str, share_url: str, save_path: str, pattern: str, replace: str, aria2: bool, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        resp = await qas_instance.add_job(
+        data = await qas_instance.add_job(
             host=qas_config_instance.host,
             task_name=task_name,
             share_url=share_url,
@@ -928,8 +928,8 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
             replace=replace
         )
 
-        if resp.ok:
-            save_path = resp.json().get('data').get('savepath')
+        if data:
+            save_path = data.get('data').get('savepath')
             # 修改 aria2
             data = await qas_instance.data(host=qas_config_instance.host)
             for index, task in enumerate(data.get("tasklist", [])):

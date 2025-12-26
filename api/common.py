@@ -207,7 +207,8 @@ def upsert_configuration_build_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton("QAS", callback_data=f"upsert_qas_configuration"),
         InlineKeyboardButton("Emby", callback_data=f"upsert_emby_configuration"),
-        InlineKeyboardButton("AI", callback_data=f"upsert_ai_configuration")
+        InlineKeyboardButton("AI", callback_data=f"upsert_ai_configuration"),
+        InlineKeyboardButton("云盘", callback_data=f"upsert_cloud_configuration")
     ]
     return InlineKeyboardMarkup([buttons]) if buttons else None
 
