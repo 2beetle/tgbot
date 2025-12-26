@@ -45,9 +45,15 @@ class PanSou(object):
     async def format_links_by_cloud_type(self, result: dict, links_valid: dict):
         messages = list()
         for cloud_type, resources in result.get('merged_by_type').items():
-            for i in range(0, len(resources), 25):
+            # 过滤掉无效状态的链接，只保留"有效"或"状态未知"的链接
+            valid_resources = [
+                resource for resource in resources
+                if links_valid.get(resource.get('url'), '状态未知') in ('有效', '状态未知')
+            ]
+
+            for i in range(0, len(valid_resources), 25):
                 lines = [f"☁️ <b>{self.cloud_type_map.get(cloud_type)}</b>（pansou资源）"]
-                chunk_data = resources[i:i + 25]
+                chunk_data = valid_resources[i:i + 25]
                 for resource in chunk_data:
                     lines.append(f'🔗 <a href="{resource.get('url')}">{resource.get('note').replace('<', '[').replace('>', ']')}</a> （{links_valid.get(resource.get('url'), '状态未知')}）')
 
