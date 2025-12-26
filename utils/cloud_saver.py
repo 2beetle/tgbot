@@ -1,7 +1,7 @@
 from collections import defaultdict
 from html import escape
 
-import requests
+import aiohttp
 
 from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD
 
@@ -11,6 +11,8 @@ class CloudSaver:
         self.username = CLOUD_SAVER_USERNAME
         self.password = CLOUD_SAVER_PASSWORD
         self.host = CLOUD_SAVER_HOST
+        self._session = None
+        self._token = None
         self.cloud_type_map = {
             "QUARK": "夸克网盘",
             "ALIPAN": "阿里云盘",
@@ -23,16 +25,38 @@ class CloudSaver:
             "UC": "UC网盘",
         }
 
-    def get(self, url, params=None):
-        token = requests.post(
-            f'{self.host}/api/user/login',
-            json={'username': self.username, 'password': self.password}
-        ).json().get('data').get('token')
-        return requests.get(
+    async def _get_session(self):
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def _get_token(self):
+        if self._token is None:
+            session = await self._get_session()
+            async with session.post(
+                f'{self.host}/api/user/login',
+                json={'username': self.username, 'password': self.password}
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self._token = data.get('data', {}).get('token')
+        return self._token
+
+    async def close(self):
+        if self._session:
+            await self._session.close()
+            self._session = None
+            self._token = None
+
+    async def get(self, url, params=None):
+        token = await self._get_token()
+        session = await self._get_session()
+        async with session.get(
             url=f'{self.host}/{url}',
             params=params,
             headers={'Authorization': f'Bearer {token}'}
-        )
+        ) as resp:
+            return resp
 
     async def search(self, search_content):
         return self.get('/api/search', {'keyword': search_content})

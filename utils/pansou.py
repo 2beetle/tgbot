@@ -1,20 +1,32 @@
 import logging
 import os
 
-import requests
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
 class PanSou(object):
     def __init__(self):
         self.host = os.getenv('PANSOU_HOST')
+        self._session = None
         self.cloud_type_map = {
             "quark": "夸克网盘",
             "baidu": "百度网盘"
         }
 
+    async def _get_session(self):
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self):
+        if self._session:
+            await self._session.close()
+            self._session = None
+
     async def search(self, keyword):
-        resp = requests.post(
+        session = await self._get_session()
+        async with session.post(
             self.host + "/api/search",
             json={
               "kw": keyword,
@@ -23,11 +35,12 @@ class PanSou(object):
               "src": "all",
               "cloud_types": ["baidu", "quark"]
             }
-        )
-        if not resp.ok:
-            logger.error(f"PANSOU search error: {resp.text}")
-        else:
-            return resp.json()
+        ) as resp:
+            if resp.status != 200:
+                error_text = await resp.text()
+                logger.error(f"PANSOU search error: {error_text}")
+                return None
+            return await resp.json()
 
     async def format_links_by_cloud_type(self, result: dict, links_valid: dict):
         messages = list()
