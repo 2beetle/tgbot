@@ -929,7 +929,8 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         if resp.ok:
-            save_path = resp.json().get('data').get('savepath')
+            data = await resp.json()
+            save_path = data.get('data').get('savepath')
             # 修改 aria2
             data = await qas_instance.data(host=qas_config_instance.host)
             for index, task in enumerate(data.get("tasklist", [])):

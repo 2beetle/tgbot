@@ -4,7 +4,6 @@ import re
 from urllib.parse import urlparse, parse_qs
 
 import aiohttp
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -63,24 +62,28 @@ class Quark:
             return quark_id, stoken, pdir_fid, None
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
-        sub_resp = requests.get(f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
-                                params={
-                                    'pr': 'ucpro',
-                                    'fr': 'pc',
-                                    'uc_param_str': '',
-                                    '_size': 40,
-                                    'pdir_fid': pdir_fid,
-                                    'pwd_id': quark_id,
-                                    'stoken': stoken,
-                                    'ver': 2
-                                })
-        if not sub_resp.ok:
-            logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {sub_resp.json()}')
-            return []
-        if include_dir:
-            return sub_resp.json()['data']['list']
-        else:
-            return [file for file in sub_resp.json()['data']['list'] if not file.get('dir')]
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
+                params={
+                    'pr': 'ucpro',
+                    'fr': 'pc',
+                    'uc_param_str': '',
+                    '_size': 40,
+                    'pdir_fid': pdir_fid,
+                    'pwd_id': quark_id,
+                    'stoken': stoken,
+                    'ver': 2
+                }
+            ) as sub_resp:
+                data = await sub_resp.json()
+                if not sub_resp.ok:
+                    logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {data}')
+                    return []
+                if include_dir:
+                    return data['data']['list']
+                else:
+                    return [file for file in data['data']['list'] if not file.get('dir')]
 
     async def check_link(self, session: aiohttp.ClientSession, link: str):
         quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link, session=session)
