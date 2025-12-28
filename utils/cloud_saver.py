@@ -1,4 +1,6 @@
+import asyncio
 from collections import defaultdict
+from datetime import datetime, timedelta
 from html import escape
 
 import aiohttp
@@ -7,20 +9,61 @@ from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PA
 
 
 class CloudSaver:
+    # 会话最大存活时间：1小时
+    _SESSION_MAX_AGE = timedelta(hours=1)
+
     def __init__(self):
         self.username = CLOUD_SAVER_USERNAME
         self.password = CLOUD_SAVER_PASSWORD
         self.host = CLOUD_SAVER_HOST
         self._session = None
+        self._session_created_at = None
         self._token = None
         self.cloud_type_map = CLOUD_TYPE_MAP
 
     async def _get_session(self):
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
+        """获取或创建会话，支持会话过期自动重建"""
+        # 检查会话是否需要重新创建
+        need_new_session = (
+            self._session is None or
+            self._session_created_at is None or
+            self._session.closed or
+            datetime.now() - self._session_created_at > self._SESSION_MAX_AGE
+        )
+
+        if need_new_session:
+            # 关闭旧会话（如果存在）
+            if self._session and not self._session.closed:
+                try:
+                    await self._session.close()
+                except Exception:
+                    pass
+
+            # 创建新会话，添加超时和连接器配置
+            timeout = aiohttp.ClientTimeout(
+                total=30,        # 总超时 30 秒
+                connect=10,      # 连接超时 10 秒
+                sock_read=20     # 读取超时 20 秒
+            )
+
+            connector = aiohttp.TCPConnector(
+                limit=100,           # 最大连接数
+                limit_per_host=30,   # 每个主机的最大连接数
+                ttl_dns_cache=300,   # DNS 缓存 5 分钟
+                force_close=False,   # 使用 HTTP keep-alive
+                enable_cleanup_closed=True  # 清理关闭的连接
+            )
+
+            self._session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector
+            )
+            self._session_created_at = datetime.now()
+
         return self._session
 
     async def _get_token(self):
+        """获取认证令牌，如果令牌过期则重新获取"""
         if self._token is None:
             session = await self._get_session()
             async with session.post(
@@ -33,10 +76,17 @@ class CloudSaver:
         return self._token
 
     async def close(self):
-        if self._session:
-            await self._session.close()
-            self._session = None
-            self._token = None
+        """关闭会话并清理资源"""
+        if self._session and not self._session.closed:
+            try:
+                await self._session.close()
+                await asyncio.sleep(0.1)
+            except Exception:
+                pass
+            finally:
+                self._session = None
+                self._session_created_at = None
+                self._token = None
 
     async def get(self, url, params=None):
         token = await self._get_token()

@@ -4,6 +4,7 @@ import json
 import logging
 import pprint
 import re
+from datetime import timedelta
 from typing import Tuple
 from urllib.parse import urlparse, parse_qs
 
@@ -17,14 +18,67 @@ logger = logging.getLogger(__name__)
 
 
 class QuarkAutoDownload:
+    # 会话最大存活时间：1小时
+    _SESSION_MAX_AGE = timedelta(hours=1)
+
     def __init__(self, api_token):
         self.api_token = api_token
         self._session = None
+        self._session_created_at = None
 
     async def _get_session(self):
-        if self._session is None:
-            self._session = aiohttp.ClientSession()
+        """获取或创建会话，支持会话过期自动重建"""
+        # 检查会话是否需要重新创建
+        need_new_session = (
+            self._session is None or
+            self._session_created_at is None or
+            self._session.closed or
+            datetime.datetime.now() - self._session_created_at > self._SESSION_MAX_AGE
+        )
+
+        if need_new_session:
+            # 关闭旧会话（如果存在）
+            if self._session and not self._session.closed:
+                try:
+                    await self._session.close()
+                except Exception as e:
+                    logger.warning(f"关闭旧会话时出错: {e}")
+
+            # 创建新会话，添加超时和连接器配置
+            timeout = aiohttp.ClientTimeout(
+                total=30,        # 总超时 30 秒
+                connect=10,      # 连接超时 10 秒
+                sock_read=20     # 读取超时 20 秒
+            )
+
+            connector = aiohttp.TCPConnector(
+                limit=100,           # 最大连接数
+                limit_per_host=30,   # 每个主机的最大连接数
+                ttl_dns_cache=300,   # DNS 缓存 5 分钟
+                force_close=False,   # 使用 HTTP keep-alive
+                enable_cleanup_closed=True  # 清理关闭的连接
+            )
+
+            self._session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector
+            )
+            self._session_created_at = datetime.datetime.now()
+            logger.debug("已创建新的 QAS HTTP 会话")
+
         return self._session
+
+    async def close(self):
+        """关闭会话并清理资源"""
+        if self._session and not self._session.closed:
+            try:
+                await self._session.close()
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.warning(f"关闭会话时出错: {e}")
+            finally:
+                self._session = None
+                self._session_created_at = None
 
     async def data(self, host):
         session = await self._get_session()

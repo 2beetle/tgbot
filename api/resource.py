@@ -72,7 +72,6 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
                     cloud_type_name = cloud_saver.cloud_type_map.get(link.get("cloudType", "").upper())
                     # 如果用户配置了常用云盘，只添加用户配置的云盘类型
                     if preferred_clouds is None or cloud_type_name in preferred_clouds:
-                        logger.info(f"<UNK> {cloud_type_name} <UNK> {url}")
                         all_links[cloud_type_name].append(url)
                         links_valid[url] = '状态未知'
     # ps
@@ -81,7 +80,6 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         # 如果用户配置了常用云盘，只处理用户配置的云盘类型
         if preferred_clouds is None or cloud_type_name in preferred_clouds:
             for resource in resources:
-                logger.info(f"<UNK> {cloud_type_name} <UNK> {url}")
                 all_links[cloud_type_name].append(resource.get('url'))
                 links_valid[resource.get('url')] = '状态未知'
 
