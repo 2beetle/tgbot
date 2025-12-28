@@ -81,63 +81,63 @@ class QuarkAutoDownload:
                 self._session_created_at = None
 
     async def data(self, host):
-        session = await self._get_session()
-        async with session.get(f'{host}/data?token={self.api_token}') as resp:
-            if not resp.ok:
-                logger.error(f'Failed to get data {host}, error: {resp.reason}')
-                return None
-            else:
-                data = await resp.json()
-                return data.get('data')
+        async with await self._get_session() as session:
+            async with session.get(f'{host}/data?token={self.api_token}') as resp:
+                if not resp.ok:
+                    logger.error(f'Failed to get data {host}, error: {resp.reason}')
+                    return None
+                else:
+                    data = await resp.json()
+                    return data.get('data')
 
     async def add_job(self, host, task_name, share_url, save_path, pattern, replace):
-        session = await self._get_session()
-        async with session.post(
-                f'{host}/api/add_task?token={self.api_token}',
-            headers={
-                'Content-Type': 'application/json',
-            },
-            json={
-                'taskname': task_name,
-                'shareurl': share_url,
-                'savepath': save_path,
-                'pattern': pattern,
-                'replace': replace
-            }
-        ) as resp:
-            if not resp.ok:
-                logger.error(f'Failed to add task {task_name}, error: {resp.text}')
-            return await resp.json()
+        async with await self._get_session() as session:
+            async with session.post(
+                    f'{host}/api/add_task?token={self.api_token}',
+                headers={
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'taskname': task_name,
+                    'shareurl': share_url,
+                    'savepath': save_path,
+                    'pattern': pattern,
+                    'replace': replace
+                }
+            ) as resp:
+                if not resp.ok:
+                    logger.error(f'Failed to add task {task_name}, error: {resp.text}')
+                return await resp.json()
 
     async def update(self, host, data):
-        session = await self._get_session()
-        async with session.post(
-            f'{host}/update?token={self.api_token}',
-            headers={
-                'Content-Type': 'application/json',
-            },
-            json=data
-        ) as resp:
-            if not resp.ok:
-                logger.error(f'Failed to update data {host}, error: {resp.text}')
-            else:
-                logger.info(f'Success to update data {host}, data: {data}')
-                return await resp.json()
+        async with await self._get_session() as session:
+            async with session.post(
+                f'{host}/update?token={self.api_token}',
+                headers={
+                    'Content-Type': 'application/json',
+                },
+                json=data
+            ) as resp:
+                if not resp.ok:
+                    logger.error(f'Failed to update data {host}, error: {resp.text}')
+                else:
+                    logger.info(f'Success to update data {host}, data: {data}')
+                    return await resp.json()
 
     async def get_share_detail(self, host, data):
-        session = await self._get_session()
-        async with session.post(
-            f'{host}/get_share_detail?token={self.api_token}',
-            headers={
-                'Content-Type': 'application/json',
-            },
-            json=data
-        ) as resp:
-            if not resp.ok:
-                logger.error(f'Failed to get_share_detail {host}, error: {resp.text}')
-            else:
-                logger.info(f'Success to get_share_detail {host}, data: {data}')
-                return await resp.json()
+        async with await self._get_session() as session:
+            async with session.post(
+                f'{host}/get_share_detail?token={self.api_token}',
+                headers={
+                    'Content-Type': 'application/json',
+                },
+                json=data
+            ) as resp:
+                if not resp.ok:
+                    logger.error(f'Failed to get_share_detail {host}, error: {resp.text}')
+                else:
+                    logger.info(f'Success to get_share_detail {host}, data: {data}')
+                    return await resp.json()
 
     async def extract_quark_share_info(self, url: str):
         match = re.search(r'https://pan\.quark\.cn/s/([a-zA-Z0-9]+)', url)
@@ -166,48 +166,48 @@ class QuarkAutoDownload:
         if pdir_fid == 'share' or pdir_fid == quark_id:
             pdir_fid = 0
 
-        session = await self._get_session()
-        async with session.post(
-            "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
-            headers={
-                'Content-Type': 'application/json',
-            },
-            json={
-                "pwd_id": quark_id,
-                "passcode": pass_code,
-                "support_visit_limit_private_share": True
-            }
-        ) as stoken_resp:
-            if not stoken_resp.ok:
-                logger.error(f'Failed to get quark stoken {url}, error: {stoken_resp.text}')
-                return quark_id, None, pdir_fid
-            data = await stoken_resp.json()
-            stoken = data['data']['stoken']
-        return quark_id, stoken, pdir_fid
+        async with await self._get_session() as session:
+            async with session.post(
+                "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
+                headers={
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    "pwd_id": quark_id,
+                    "passcode": pass_code,
+                    "support_visit_limit_private_share": True
+                }
+            ) as stoken_resp:
+                if not stoken_resp.ok:
+                    logger.error(f'Failed to get quark stoken {url}, error: {stoken_resp.text}')
+                    return quark_id, None, pdir_fid
+                data = await stoken_resp.json()
+                stoken = data['data']['stoken']
+            return quark_id, stoken, pdir_fid
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
-        session = await self._get_session()
-        async with session.get(
-            f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
-            params={
-                'pr': 'ucpro',
-                'fr': 'pc',
-                'uc_param_str': '',
-                '_size': 40,
-                'pdir_fid': pdir_fid,
-                'pwd_id': quark_id,
-                'stoken': stoken,
-                'ver': 2
-            }
-        ) as sub_resp:
-            data = await sub_resp.json()
-            if not sub_resp.ok:
-                logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {data}')
-                return []
-            if include_dir:
-                return data['data']['list']
-            else:
-                return [file for file in data['data']['list'] if not file.get('dir')]
+        async with await self._get_session() as session:
+            async with session.get(
+                f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
+                params={
+                    'pr': 'ucpro',
+                    'fr': 'pc',
+                    'uc_param_str': '',
+                    '_size': 40,
+                    'pdir_fid': pdir_fid,
+                    'pwd_id': quark_id,
+                    'stoken': stoken,
+                    'ver': 2
+                }
+            ) as sub_resp:
+                data = await sub_resp.json()
+                if not sub_resp.ok:
+                    logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {data}')
+                    return []
+                if include_dir:
+                    return data['data']['list']
+                else:
+                    return [file for file in data['data']['list'] if not file.get('dir')]
 
     async def get_quark_dir_structure(self, quark_id, stoken, pdir_fid):
         result = list()
@@ -398,17 +398,17 @@ Replace生成规则：
         return generate_params
 
     async def run_script_now(self, host, task_list):
-        session = await self._get_session()
-        async with session.post(
-            f'{host}/run_script_now?token={self.api_token}',
-            json={
-                "tasklist": task_list
-            }
-        ) as resp:
-            if not resp.ok:
-                logger.error(f'Failed to run script {host}, error: {resp.reason}')
-            else:
-                return await resp.text()
+        async with await self._get_session() as session:
+            async with session.post(
+                f'{host}/run_script_now?token={self.api_token}',
+                json={
+                    "tasklist": task_list
+                }
+            ) as resp:
+                if not resp.ok:
+                    logger.error(f'Failed to run script {host}, error: {resp.reason}')
+                else:
+                    return await resp.text()
 
     async def ai_classify_seasons(self, url: str, session, user_id) -> Tuple[dict, dict]:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)

@@ -75,22 +75,22 @@ class PanSou(object):
                 self._session_created_at = None
 
     async def search(self, keyword):
-        session = await self._get_session()
-        async with session.post(
-            self.host + "/api/search",
-            json={
-              "kw": keyword,
-              "refresh": False,
-              "res": "merge",
-              "src": "all",
-              "cloud_types": ["baidu", "quark"]
-            }
-        ) as resp:
-            if resp.status != 200:
-                error_text = await resp.text()
-                logger.error(f"PANSOU search error: {error_text}")
-                return None
-            return await resp.json()
+        async with await self._get_session() as session:
+            async with session.post(
+                self.host + "/api/search",
+                json={
+                  "kw": keyword,
+                  "refresh": False,
+                  "res": "merge",
+                  "src": "all",
+                  "cloud_types": ["baidu", "quark"]
+                }
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logger.error(f"PANSOU search error: {error_text}")
+                    return None
+                return await resp.json()
 
     async def format_links_by_cloud_type(self, result: dict, links_valid: dict, preferred_clouds=None):
         messages = list()

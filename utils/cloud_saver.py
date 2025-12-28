@@ -67,14 +67,14 @@ class CloudSaver:
     async def _get_token(self):
         """获取认证令牌，如果令牌过期则重新获取"""
         if self._token is None:
-            session = await self._get_session()
-            async with session.post(
-                f'{self.host}/api/user/login',
-                json={'username': self.username, 'password': self.password}
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    self._token = data.get('data', {}).get('token')
+            async with await self._get_session() as session:
+                async with session.post(
+                    f'{self.host}/api/user/login',
+                    json={'username': self.username, 'password': self.password}
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        self._token = data.get('data', {}).get('token')
         return self._token
 
     async def close(self):
@@ -92,15 +92,15 @@ class CloudSaver:
 
     async def get(self, url, params=None):
         token = await self._get_token()
-        session = await self._get_session()
-        async with session.get(
-            url=f'{self.host}/{url}',
-            params=params,
-            headers={'Authorization': f'Bearer {token}'}
-        ) as resp:
-            logger.info(f"{resp.status}: {resp.reason}")
-            data = await resp.json()
-            return data
+        async with await self._get_session() as session:
+            async with session.get(
+                url=f'{self.host}/{url}',
+                params=params,
+                headers={'Authorization': f'Bearer {token}'}
+            ) as resp:
+                logger.info(f"{resp.status}: {resp.reason}")
+                data = await resp.json()
+                return data
 
     async def search(self, search_content):
         return await self.get('/api/search', {'keyword': search_content})
