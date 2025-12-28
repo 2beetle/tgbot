@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 from html import escape
@@ -7,6 +8,7 @@ import aiohttp
 
 from config.config import CLOUD_SAVER_HOST, CLOUD_SAVER_USERNAME, CLOUD_SAVER_PASSWORD, CLOUD_TYPE_MAP
 
+logger = logging.getLogger(__name__)
 
 class CloudSaver:
     # 会话最大存活时间：1小时
@@ -96,6 +98,7 @@ class CloudSaver:
             params=params,
             headers={'Authorization': f'Bearer {token}'}
         ) as resp:
+            logger.info(f"{resp.status}: {resp.reason}")
             data = await resp.json()
             return data
 

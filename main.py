@@ -186,6 +186,23 @@ async def post_init(app):
         replace_existing=True
     )
 
+
+async def post_shutdown(app: telegram.ext.Application):
+    """应用关闭时清理资源"""
+    logger.info("Shutting down application, cleaning up resources...")
+
+    # 停止调度器
+    scheduler = app.bot_data.get('async_scheduler')
+    if scheduler:
+        scheduler.shutdown()
+        logger.info("Scheduler shutdown complete")
+
+    # 关闭 CloudSaver 的 ClientSession
+    cloud_saver = app.bot_data.get('cloud_saver')
+    if cloud_saver:
+        await cloud_saver.close()
+        logger.info("CloudSaver session closed")
+
 if __name__ == '__main__':
     init = Init()
     cloud_saver = CloudSaver()
@@ -193,6 +210,7 @@ if __name__ == '__main__':
     application = ApplicationBuilder()\
         .token(TG_BOT_TOKEN)\
         .post_init(post_init)\
+        .post_shutdown(post_shutdown)\
         .build()
 
     application.bot_data['db_session_local'] = init.session_local
