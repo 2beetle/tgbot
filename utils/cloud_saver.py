@@ -99,6 +99,19 @@ class CloudSaver:
                 headers={'Authorization': f'Bearer {token}'}
             ) as resp:
                 logger.info(f"{resp.status}: {resp.reason}")
+                # 处理 401 未授权错误，清除token并重试一次
+                if resp.status == 401:
+                    logger.warning("Token已过期或无效，尝试重新获取")
+                    self._token = None
+                    token = await self._get_token()
+                    async with session.get(
+                        url=f'{self.host}/{url}',
+                        params=params,
+                        headers={'Authorization': f'Bearer {token}'}
+                    ) as retry_resp:
+                        logger.info(f"重试后状态码: {retry_resp.status}")
+                        data = await retry_resp.json()
+                        return data
                 data = await resp.json()
                 return data
 

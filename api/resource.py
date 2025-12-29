@@ -24,12 +24,14 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
     async def cs_task(search_content: str):
         cloud_saver = context.bot_data['cloud_saver']
         data = await cloud_saver.search(search_content)
-        return data.get('data')
+        return data.get('data') or []
 
     async def ps_task(search_content: str):
         p = PanSou()
         data = await p.search(search_content)
-        return data.get('data')
+        if data is None:
+            return {'merged_by_type': {}}
+        return data.get('data') or {'merged_by_type': {}}
 
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
