@@ -46,9 +46,9 @@ class QuarkAutoDownload:
 
             # 创建新会话，添加超时和连接器配置
             timeout = aiohttp.ClientTimeout(
-                total=30,        # 总超时 30 秒
-                connect=10,      # 连接超时 10 秒
-                sock_read=20     # 读取超时 20 秒
+                total=60,        # 总超时 60 秒
+                connect=30,      # 连接超时 30 秒
+                sock_read=40     # 读取超时 40 秒
             )
 
             connector = aiohttp.TCPConnector(
@@ -166,48 +166,56 @@ class QuarkAutoDownload:
         if pdir_fid == 'share' or pdir_fid == quark_id:
             pdir_fid = 0
 
-        async with await self._get_session() as session:
-            async with session.post(
-                "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
-                headers={
-                    'Content-Type': 'application/json',
-                },
-                json={
-                    "pwd_id": quark_id,
-                    "passcode": pass_code,
-                    "support_visit_limit_private_share": True
-                }
-            ) as stoken_resp:
-                if not stoken_resp.ok:
-                    logger.error(f'Failed to get quark stoken {url}, error: {stoken_resp.text}')
-                    return quark_id, None, pdir_fid
-                data = await stoken_resp.json()
-                stoken = data['data']['stoken']
-            return quark_id, stoken, pdir_fid
+        try:
+            async with await self._get_session() as session:
+                async with session.post(
+                    "https://drive-h.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc",
+                    headers={
+                        'Content-Type': 'application/json',
+                    },
+                    json={
+                        "pwd_id": quark_id,
+                        "passcode": pass_code,
+                        "support_visit_limit_private_share": True
+                    }
+                ) as stoken_resp:
+                    if not stoken_resp.ok:
+                        logger.error(f'Failed to get quark stoken {url}, error: {await stoken_resp.text()}')
+                        return quark_id, None, pdir_fid
+                    data = await stoken_resp.json()
+                    stoken = data['data']['stoken']
+                return quark_id, stoken, pdir_fid
+        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError) as e:
+            logger.error(f'获取夸克分享token失败 {url}, 错误: {e}')
+            return quark_id, None, pdir_fid
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
         async with await self._get_session() as session:
-            async with session.get(
-                f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
-                params={
-                    'pr': 'ucpro',
-                    'fr': 'pc',
-                    'uc_param_str': '',
-                    '_size': 40,
-                    'pdir_fid': pdir_fid,
-                    'pwd_id': quark_id,
-                    'stoken': stoken,
-                    'ver': 2
-                }
-            ) as sub_resp:
-                data = await sub_resp.json()
-                if not sub_resp.ok:
-                    logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {data}')
-                    return []
-                if include_dir:
-                    return data['data']['list']
-                else:
-                    return [file for file in data['data']['list'] if not file.get('dir')]
+            try:
+                async with session.get(
+                    f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
+                    params={
+                        'pr': 'ucpro',
+                        'fr': 'pc',
+                        'uc_param_str': '',
+                        '_size': 20,
+                        'pdir_fid': pdir_fid,
+                        'pwd_id': quark_id,
+                        'stoken': stoken,
+                        'ver': 2
+                    }
+                ) as sub_resp:
+                    data = await sub_resp.json()
+                    if not sub_resp.ok:
+                        logger.error(f'Failed to get quark sub {quark_id}/{pdir_fid}, error: {data}')
+                        return []
+                    if include_dir:
+                        return data['data']['list']
+                    else:
+                        return [file for file in data['data']['list'] if not file.get('dir')]
+            except (aiohttp.ClientError, asyncio.TimeoutError, KeyError) as e:
+                logger.error(f'获取夸克目录详情失败 {quark_id}/{pdir_fid}, 错误: {e}')
+                return []
 
     async def get_quark_dir_structure(self, quark_id, stoken, pdir_fid):
         result = list()
@@ -235,7 +243,10 @@ class QuarkAutoDownload:
             files = await self.get_quark_dir_detail(quark_id=quark_id, stoken=stoken, pdir_fid=fid)
             for file in files:
                 if file['dir'] is True:
-                    await recursive_get_fid_files(file['fid'], file['file_name'], quark_id, stoken, fid_files, include_dir)
+                    try:
+                        await recursive_get_fid_files(file['fid'], file['file_name'], quark_id, stoken, fid_files, include_dir)
+                    except Exception as e:
+                        logger.warning(f'递归获取子目录失败 {file["file_name"]}, 跳过该目录。错误: {e}')
                     if include_dir:
                         dir_files.append({
                             "file_name": file['file_name'],
