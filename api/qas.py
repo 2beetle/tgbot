@@ -1967,7 +1967,7 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
             quark = Quark()
             for index, task in enumerate(task_list):
                 share_url = task.get('shareurl')
-                quark_id, stoken, pdir_fid = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)
+                quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)
                 dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False, size=1)
                 if isinstance(dir_details, list) and len(dir_details) > 0:
                     latest_fid = dir_details[0]['fid']
