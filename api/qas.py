@@ -1972,15 +1972,15 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
                 if isinstance(dir_details, list) and len(dir_details) > 0:
                     latest_fid = dir_details[0]['fid']
                     if len(context.args) < 1:
-                        data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
+                        data['tasklist'][index]['startfid'] = latest_fid
                         await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at'])/1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                            text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at'])/1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
                             parse_mode='html'
                         )
                     else:
-                        data['tasklist'][index]['startfid'] = latest_fid
+                        data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
                         await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at']) / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                            text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at']) / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
                             parse_mode='html'
                         )
         success = await qas.update(host=qas_config.host, data=data)
