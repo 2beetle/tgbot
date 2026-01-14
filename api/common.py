@@ -208,7 +208,8 @@ def upsert_configuration_build_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("QAS", callback_data=f"upsert_qas_configuration"),
         InlineKeyboardButton("Emby", callback_data=f"upsert_emby_configuration"),
         InlineKeyboardButton("AI", callback_data=f"upsert_ai_configuration"),
-        InlineKeyboardButton("云盘", callback_data=f"upsert_cloud_configuration")
+        InlineKeyboardButton("云盘", callback_data=f"upsert_cloud_configuration"),
+        InlineKeyboardButton("节省空间", callback_data=f"upsert_save_space_configuration")
     ]
     return InlineKeyboardMarkup([buttons]) if buttons else None
 
@@ -220,6 +221,7 @@ async def upsert_configuration(update: Update, context: ContextTypes.DEFAULT_TYP
         text="选择你要新增或更新的配置",
         reply_markup=upsert_configuration_build_keyboard()
     )
+
 
 async def cancel_conversation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

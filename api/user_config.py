@@ -14,12 +14,73 @@ logger = logging.getLogger(__name__)
 
 # 对话状态
 CLOUD_TYPE_SELECT = 0
+SAVE_SPACE_SELECT = 1
 
 # 从全局配置获取支持的云盘类型，转换为 UI 需要的格式
 AVAILABLE_CLOUD_TYPES_LIST = [
     {"id": cloud_type, "name": cloud_type}
     for cloud_type in sorted(AVAILABLE_CLOUD_TYPES)
 ]
+
+
+async def save_space_mode_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """节省网盘空间模式配置"""
+    query = update.callback_query
+    await query.answer()
+
+    # 获取用户当前配置
+    user_config = user.configuration or {}
+    save_space_mode = user_config.get('save_space_mode', False)
+    status = "✅ 已开启" if save_space_mode else "⬜ 已关闭"
+
+    buttons = [
+        [InlineKeyboardButton(f"{status}", callback_data="toggle_save_space_mode")],
+        [InlineKeyboardButton("❌ 关闭", callback_data="cancel_save_space_config_conversation")]
+    ]
+
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    message = "<b>💾 节省网盘空间模式</b>\n\n"
+    message += f"<b>当前状态:</b> {status}\n\n"
+    message += "<i>开启后，运行QAS任务时会自动标记最新文件为开始转存文件，节省网盘空间</i>"
+
+    try:
+        await query.edit_message_text(message, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        await update.effective_message.reply_text(message, reply_markup=keyboard, parse_mode="HTML")
+
+    return SAVE_SPACE_SELECT
+
+
+async def toggle_save_space_mode(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """切换节省网盘空间模式"""
+    query = update.callback_query
+    await query.answer()
+
+    # 获取用户配置
+    user_config = user.configuration or {}
+    current_status = user_config.get('save_space_mode', False)
+
+    # 切换状态
+    new_status = not current_status
+    user_config['save_space_mode'] = new_status
+
+    # 保存到数据库
+    user.configuration = user_config
+    session.commit()
+
+    status_text = "已开启 ✅" if new_status else "已关闭 ⬜"
+    message = f"💾 节省网盘空间模式 {status_text}\n\n"
+    message += "<i>开启后，运行QAS任务时会自动标记最新文件为开始转存文件，节省网盘空间</i>"
+
+    try:
+        await query.edit_message_text(message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        await update.effective_message.reply_text(message, parse_mode="HTML")
+
+    return ConversationHandler.END
 
 
 async def cloud_type_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -162,9 +223,40 @@ def get_user_preferred_cloud_types(user: User) -> Optional[List[str]]:
     return preferred_clouds
 
 
+# 获取用户是否启用节省网盘空间模式
+def get_user_save_space_mode(user: User) -> bool:
+    """获取用户是否启用节省网盘空间模式"""
+    if not user.configuration:
+        return False
+
+    return user.configuration.get('save_space_mode', False)
+
+
 # 处理器定义
 handlers = [
-    # 主要的对话处理器
+    # 节省网盘空间模式配置对话处理器
+    ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(
+                depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(save_space_mode_select),
+                pattern=r"^upsert_save_space_configuration"
+            )
+        ],
+        states={
+            SAVE_SPACE_SELECT: [
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(toggle_save_space_mode),
+                    pattern=r"^toggle_save_space_mode$"
+                ),
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_save_space_config_conversation$")
+        ],
+        conversation_timeout=300,
+        name="save_space_config_conversation"
+    ),
+    # 云盘配置对话处理器
     ConversationHandler(
         entry_points=[
             CallbackQueryHandler(
