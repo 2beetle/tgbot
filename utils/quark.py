@@ -61,7 +61,7 @@ class Quark:
                 return quark_id, None, pdir_fid, '状态未知'
             return quark_id, stoken, pdir_fid, None
 
-    async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True):
+    async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True, size=40):
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
@@ -69,11 +69,12 @@ class Quark:
                     'pr': 'ucpro',
                     'fr': 'pc',
                     'uc_param_str': '',
-                    '_size': 40,
+                    '_size': size,
                     'pdir_fid': pdir_fid,
                     'pwd_id': quark_id,
                     'stoken': stoken,
-                    'ver': 2
+                    'ver': 2,
+                    "_sort": "file_type:asc,updated_at:desc"
                 }
             ) as sub_resp:
                 data = await sub_resp.json()

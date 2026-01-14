@@ -1,9 +1,11 @@
+import datetime
 import html
 import json
 import logging
 import os.path
 import re
 
+import aiohttp
 from sqlalchemy.orm import Session
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -11,15 +13,17 @@ from telegram.ext import ContextTypes, CallbackQueryHandler, ConversationHandler
 
 from api.base import command
 from api.common import cancel_conversation_callback
-from config.config import get_allow_roles_command_map
+from config.config import get_allow_roles_command_map, TIME_ZONE
 from db.models.log import OperationLog, OperationType
 from db.models.qas import QuarkAutoDownloadConfig
 from db.models.user import User
 from utils.command_middleware import depends
 from utils.common import get_random_letter_number_id
 from utils.qas import QuarkAutoDownload
+from utils.quark import Quark
 from utils.the_movie_db import TheMovieDB
 from utils.crypto import encrypt_sensitive_data, decrypt_sensitive_data
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -1953,6 +1957,39 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
     await update.effective_message.reply_text(
         text="\n".join(lines)
     )
+    # 获取日期最后的文件的fid，并设置fid为开始文件
+    await update.effective_message.reply_text(
+        text="已开启节省网盘空间设置，即将标记最新的任务为开始转存的任务，若要关闭请使用 /upsert_configuration 命令"
+    )
+    async with aiohttp.ClientSession() as session:
+        quark = Quark()
+        for index, task in enumerate(task_list):
+            share_url = task.get('shareurl')
+            quark_id, stoken, pdir_fid = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=session)
+            dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False, size=1)
+            if isinstance(dir_details, list) and len(dir_details) > 0:
+                latest_fid = dir_details[0]['fid']
+                if len(context.args) < 1:
+                    data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
+                    await update.effective_message.reply_text(
+                        text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at'])/1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                        parse_mode='html'
+                    )
+                else:
+                    data['tasklist'][index]['startfid'] = latest_fid
+                    await update.effective_message.reply_text(
+                        text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at']) / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                        parse_mode='html'
+                    )
+    success = await qas.update(host=qas_config.host, data=data)
+    if success:
+        await update.effective_message.reply_text(
+            text="标记完成 ✅"
+        )
+    else:
+        await update.effective_message.reply_text(
+            text="标记失败 ❌"
+        )
 
 
 async def qas_run_script_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):

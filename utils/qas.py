@@ -46,7 +46,7 @@ class QuarkAutoDownload:
 
             # 创建新会话，添加超时和连接器配置
             timeout = aiohttp.ClientTimeout(
-                total=60,        # 总超时 60 秒
+                total=180,        # 总超时 180 秒
                 connect=30,      # 连接超时 30 秒
                 sock_read=40     # 读取超时 40 秒
             )
