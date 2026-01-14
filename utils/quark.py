@@ -8,9 +8,14 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 class Quark:
-    def __init__(self):
-        pass
-
+    def __init__(self, cookies=None):
+        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/3.14.2 Chrome/112.0.5615.165 Electron/24.1.3.8 Safari/537.36 Channel/pckk_other_ch"
+        self.cookies = cookies
+        self.headers = {
+            "cookie": self.cookies,
+            "content-type": "application/json",
+            "user-agent": self.user_agent,
+        }
     async def extract_quark_share_info(self, url: str):
         match = re.search(r'https://pan\.quark\.cn/s/([a-zA-Z0-9]+)', url)
         quark_id = match.group(1) if match else None
@@ -118,8 +123,111 @@ class Quark:
             result.update(dict(results))
         return result
 
+    async def get_path_file_map(self, paths: list):
+        files = []
+        file_paths = paths[:50]
+        while True:
+            url = f"https://drive-pc.quark.cn/1/clouddrive/file/info/path_list"
+            querystring = {"pr": "ucpro", "fr": "pc"}
+            payload = {"file_path": file_paths, "namespace": "0"}
+            async with aiohttp.ClientSession() as session:
+                async with await session.post(url, params=querystring, json=payload, headers=self.headers) as resp:
+                    response = await resp.json()
+                    if response["code"] == 0:
+                        files += response["data"]
+                        file_paths = file_paths[50:]
+                    else:
+                        logger.error(f"获取目录ID：失败, {response['message']}")
+                        break
+                    if len(file_paths) == 0:
+                        break
+        return zip(paths, files)
+
+    async def get_path_pdir_fid(self, path):
+        if path:
+            path = re.sub(r"/+", "/", path)
+            if path == "/":
+                return {"fid": 0, "name": "", 'path': path}
+            else:
+                dir_names = path.split("/")
+                if dir_names[0] == "":
+                    dir_names.pop(0)
+                path_fids = []
+                current_path = ""
+                for dir_name in dir_names:
+                    current_path += "/" + dir_name
+                    path_fids.append(current_path)
+                if path_file_map := await self.get_path_file_map(path_fids):
+                    paths = [
+                        {"fid": file["fid"], "name": path.split("/")[-1], 'path': path}
+                        for path, file in path_file_map
+                    ]
+                    return paths
+                else:
+                    return None
+        else:
+            logger.error(f'path {path} is empty')
+            return None
+
+    async def get_quark_clouddrive_files(self, pdir_fid, size=30):
+        async def recursive_get_quark_clouddrive_files(pdir_fid, session, size, page=1, files=None):
+            if files is None:
+                files = []
+            url = f"https://drive-pc.quark.cn/1/clouddrive/file/sort"
+            querystring = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "uc_param_str": "",
+                "pdir_fid": pdir_fid,
+                "_page": page,
+                "_size": size,
+                "_fetch_total": "1",
+                "_fetch_sub_dirs": "0",
+                "_sort": "file_type:asc,updated_at:desc",
+                "_fetch_full_path": kwargs.get("fetch_full_path", 0),
+                "fetch_all_file": 1,  # 跟随Web端，作用未知
+                "fetch_risk_file_name": 1,  # 如无此参数，违规文件名会被变 ***
+            }
+            async with await session.get(url, params=querystring, headers=self.headers) as resp:
+                response = await resp.json()
+                if response["code"] != 0:
+                    return []
+                if response["data"]["list"]:
+                    files.extend(response["data"]["list"])
+
+                if len(files) >= response["metadata"]["_total"]:
+                    return files
+                else:
+                    return await recursive_get_quark_clouddrive_files(pdir_fid, session, size, page+1, files)
+
+        async with aiohttp.ClientSession() as session:
+            result = await recursive_get_quark_clouddrive_files(pdir_fid, session, size, 1, [])
+
+        if isinstance(result, list):
+            return result
+        else:
+            return []
+
+
+    async def delete_files(self, filelist: list):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'https://drive-pc.quark.cn/1/clouddrive/file/delete?pr=ucpro&fr=pc&uc_param_str=',
+                headers=self.headers,
+                json={
+                    "action_type": 2,
+                    "filelist": filelist,
+                    "exclude_fids": []
+                }
+            ) as sub_resp:
+                data = await sub_resp.json()
+                if not sub_resp.ok:
+                    logger.error(f'Failed to delete files: {filelist}, error: {data}')
+                    return None
+                return data
+
 
 if __name__ == '__main__':
-    quark = Quark()
-    result = asyncio.run(quark.links_valid(['https://pan.quark.cn/s/30be6ed6692c#/list/share', 'https://pan.quark.cn/s/186d42868348#/list/share', 'https://pan.quark.cn/s/3b84769ebcbf']))
+    quark = Quark(cookies='')
+    result = asyncio.run(quark.delete_files(filelist=['eda4cc097e3a42759d6b2efe531cd9a2']))
     print(result)

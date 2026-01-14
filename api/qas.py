@@ -1969,20 +1969,28 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
                 share_url = task.get('shareurl')
                 quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)
                 dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False, size=1)
+                latest_timestamp = None
                 if isinstance(dir_details, list) and len(dir_details) > 0:
                     latest_fid = dir_details[0]['fid']
                     if len(context.args) < 1:
                         data['tasklist'][index]['startfid'] = latest_fid
+                        latest_timestamp = int(dir_details[0]['last_update_at'])
+                        latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
                         await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at'])/1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                            text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
                             parse_mode='html'
                         )
                     else:
                         data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
+                        latest_timestamp = int(dir_details[0]['last_update_at'])
+                        latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
                         await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({datetime.datetime.fromtimestamp(int(dir_details[0]['last_update_at']) / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE)).strftime('%Y年%m月%d日 %H:%M:%S')})",
+                            text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
                             parse_mode='html'
                         )
+                if latest_timestamp:
+
+
         success = await qas.update(host=qas_config.host, data=data)
         if success:
             await update.effective_message.reply_text(
