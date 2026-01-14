@@ -2,6 +2,7 @@ import logging
 from typing import Optional, List
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
 
@@ -68,6 +69,7 @@ async def toggle_save_space_mode(update: Update, context: ContextTypes.DEFAULT_T
 
     # 保存到数据库
     user.configuration = user_config
+    flag_modified(user, "configuration")
     session.commit()
 
     status_text = "已开启 ✅" if new_status else "已关闭 ⬜"
@@ -186,6 +188,7 @@ async def save_cloud_config(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     # 保存到数据库
     user.configuration = user_config
+    flag_modified(user, "configuration")
     session.commit()
 
     # 清除临时数据
