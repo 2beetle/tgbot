@@ -2027,27 +2027,36 @@ async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         parse_mode='html'
                     )
             if latest_timestamp and get_user_save_space_mode(user):
-                await update.effective_message.reply_text(
-                    text=f"已开启节省网盘空间设置，即将清理 <b> {task.get('savepath')}</b> 下的旧文件",
-                    parse_mode='html'
-                )
-                delete_message = f'删除 <b>{task.get("savepath")}</b> 下的旧文件：\n'
-                delete_files_fid = list()
-                path_file_map = await quark.get_path_file_map(paths=[task.get('savepath')])
-                for path, file in path_file_map.items():
-                    path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
-                    for index, path_file in enumerate(path_files):
-                        if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
-                            logger.info(f'即将删除 <b>{task.get("savepath")}</b> 的 {path_file["file_name"]}')
-                            prefix = '└──' if index == len(path_files) - 1 else '├──'
-                            delete_message += f"{prefix} {path_file["file_name"]}\n"
-                            delete_files_fid.append(path_file['fid'])
-                if delete_files_fid:
-                    await quark.delete_files(delete_files_fid)
+                # 检查是否配置了夸克 cookies
+                quark_cookies = await get_user_quark_cookies(user)
+                if not quark_cookies:
                     await update.effective_message.reply_text(
-                        text=delete_message,
+                        text="⚠️ 已开启节省网盘空间模式，但未配置夸克网盘 Cookies。\n请使用 /upsert_configuration 命令配置「夸克网盘」Cookies 后再试。",
                         parse_mode='html'
                     )
+                    # 跳过删除旧文件的逻辑，继续标记开始文件
+                else:
+                    await update.effective_message.reply_text(
+                        text=f"已开启节省网盘空间设置，即将清理 <b> {task.get('savepath')}</b> 下的旧文件",
+                        parse_mode='html'
+                    )
+                    delete_message = f'删除 <b>{task.get("savepath")}</b> 下的旧文件：\n'
+                    delete_files_fid = list()
+                    path_file_map = await quark.get_path_file_map(paths=[task.get('savepath')])
+                    for path, file in path_file_map.items():
+                        path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
+                        for idx, path_file in enumerate(path_files):
+                            if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
+                                logger.info(f'即将删除 <b>{task.get("savepath")}</b> 的 {path_file["file_name"]}')
+                                prefix = '└──' if idx == len(path_files) - 1 else '├──'
+                                delete_message += f"{prefix} {path_file["file_name"]}\n"
+                                delete_files_fid.append(path_file['fid'])
+                    if delete_files_fid:
+                        await quark.delete_files(delete_files_fid)
+                        await update.effective_message.reply_text(
+                            text=delete_message,
+                            parse_mode='html'
+                        )
 
         success = await qas.update(host=qas_config.host, data=data)
         if success:
