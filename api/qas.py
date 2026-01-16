@@ -735,8 +735,6 @@ async def qas_add_task_ai_ask_pattern_replace_button(update: Update, context: Co
 
 
 async def qas_add_task_ai_generate_pattern_replace_text(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    query = update.callback_query
-    await query.answer()
     await update.effective_message.reply_text(
         text="🤖 AI 根据分享链接中的文件内容生成正则中..."
     )
@@ -968,6 +966,9 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
                         InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
@@ -1095,6 +1096,9 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
                         InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
@@ -1161,6 +1165,9 @@ async def qas_list_err_task(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 reply_markup=InlineKeyboardMarkup([
                     [
                         InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
                     ],
                     [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
@@ -1842,6 +1849,9 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
                     InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{task_id}")
                 ],
                 [
+                    InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{task_id}")
+                ],
+                [
                     InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{task_id}")
                 ],
                 [
@@ -1958,40 +1968,78 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
     await update.effective_message.reply_text(
         text="\n".join(lines)
     )
-    # 检查是否启用节省网盘空间模式
-    if get_user_save_space_mode(user):
-        await update.effective_message.reply_text(
-            text="已开启节省网盘空间设置，即将标记最新的任务为开始转存的任务，若要关闭请使用 /upsert_configuration 命令"
-        )
-        async with aiohttp.ClientSession() as http_session:
-            quark = Quark()
-            for index, task in enumerate(task_list):
-                share_url = task.get('shareurl')
-                quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)
-                dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False, size=1)
-                latest_timestamp = None
-                if isinstance(dir_details, list) and len(dir_details) > 0:
-                    latest_fid = dir_details[0]['fid']
-                    if len(context.args) < 1:
-                        data['tasklist'][index]['startfid'] = latest_fid
-                        latest_timestamp = int(dir_details[0]['last_update_at'])
-                        latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
-                        await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
-                            parse_mode='html'
-                        )
-                    else:
-                        data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
-                        latest_timestamp = int(dir_details[0]['last_update_at'])
-                        latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
-                        await update.effective_message.reply_text(
-                            text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
-                            parse_mode='html'
-                        )
-                if latest_timestamp:
 
 
-        success = await qas.update(host=qas_config.host, data=data)
+async def qas_run_script_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    context.args = [int(query.data.split(":")[1])]
+    return await qas_run_script(update, context, session, user)
+
+
+async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    await update.effective_message.reply_text(
+        text="标记任务的开始转存文件"
+    )
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+    qas = QuarkAutoDownload(api_token=api_token)
+
+    await update.effective_message.reply_text(
+        text="获取qas任务数据中"
+    )
+
+    data = await qas.data(host=qas_config.host)
+    if len(context.args) < 1:
+        task_list = data["tasklist"]
+    else:
+        task_list = [data["tasklist"][int(context.args[0])]]
+    async with aiohttp.ClientSession() as http_session:
+        quark = Quark()
+        for index, task in enumerate(task_list):
+            share_url = task.get('shareurl')
+            quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)
+            dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False, size=1)
+            latest_timestamp = None
+            if isinstance(dir_details, list) and len(dir_details) > 0:
+                latest_fid = dir_details[0]['fid']
+                if len(context.args) < 1:
+                    data['tasklist'][index]['startfid'] = latest_fid
+                    latest_timestamp = int(dir_details[0]['l_updated_at'])
+                    latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
+                    await update.effective_message.reply_text(
+                        text=f"即将标记任务 <b>{data['tasklist'][index]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
+                        parse_mode='html'
+                    )
+                else:
+                    data['tasklist'][int(context.args[0])]['startfid'] = latest_fid
+                    latest_timestamp = int(dir_details[0]['l_updated_at'])
+                    latest_datetime = datetime.datetime.fromtimestamp(latest_timestamp / 1000, tz=datetime.UTC).astimezone(pytz.timezone(TIME_ZONE))
+                    await update.effective_message.reply_text(
+                        text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
+                        parse_mode='html'
+                    )
+            if latest_timestamp and get_user_save_space_mode(user):
+                await update.effective_message.reply_text(
+                    text=f"已开启节省网盘空间设置，即将清理 <b> {task.get('savepath')}</b> 下的旧文件",
+                    parse_mode='html'
+                )
+                delete_files_fid = list()
+                path_file_map = await quark.get_path_file_map(paths=[task.get('savepath')])
+                for path, file in path_file_map.items():
+                    path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
+                    for path_file in path_files:
+                        if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
+                            logger.info(f'即将删除 <b> {task.get("savepath")}</b> 的 {path_file["file_name"]}')
+                            delete_files_fid.append(path_file['0d4154da3afc4d61a86dcdb8440cd9a2'])
+
+        # success = await qas.update(host=qas_config.host, data=data)
+        success = True
         if success:
             await update.effective_message.reply_text(
                 text="标记完成 ✅"
@@ -2002,11 +2050,11 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
             )
 
 
-async def qas_run_script_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+async def qas_tag_start_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
     context.args = [int(query.data.split(":")[1])]
-    return await qas_run_script(update, context, session, user)
+    return await qas_tag_start_file(update, context, session, user)
 
 
 @command(name='qas_view_task_regex', description="QAS 查看任务正则匹配效果", args="{task id}")
@@ -2066,6 +2114,9 @@ async def qas_view_task_regex(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{index}")
+            ],
+            [
+                InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
             ],
             [
                 InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
@@ -2362,6 +2413,10 @@ handlers = [
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_run_script'))(qas_run_script_handler),
             pattern=r"^qas_run_script:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_tag_start_file'))(qas_tag_start_file_handler),
+            pattern=r"^qas_tag_start_file:.*$"
     ),
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_run_script'))(qas_view_task_regex_handler),
