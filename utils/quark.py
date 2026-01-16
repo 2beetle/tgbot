@@ -228,7 +228,7 @@ class Quark:
 
 
 async def main():
-    quark = Quark(cookies='b-user-id=2b859cab-f785-f931-30fa-df07da411ff3; _UP_A4A_11_=wb96a11b485744259bef147e03a5cd3f; __sdid=AASkfqL4DlbS/7P2kkvTjgNRahK3OvcAJ0CWQEUjo2pQSlqYuACgL8sxTKQFiGweMzeJ8SonxgwOpXefcdo/sMy44eYAo0epbBOQOuQ7doLsLQ==; isg=BNraO9TSZnoeEuVo6oE4otNnK4b8C17l2yrDoORbLG04V3-RzJrL9VduIyNLh9Z9; _UP_F7E_8D_=OJeFCNbmQjm%2F3dMtooKz5EPwKLOVbxJPcg0RzQPI6Knpe%2FVlExDLvwWk3%2BqxkwVyhdZ%2Bc09AyraclvYdENl26pP6NZpJjHSFAga2josF9WI5KqmBMZjstSyxXmZd2p0oVFkfbqd%2FhVjlt0AbNkJqehFHs%2BQ%2FpshPrgvAKVxvsq4i6PDzvwNnqu7rSXFm5RjbW1%2FmvBLvMwKTOk2wEvbokFCfwAd1vIZU3jqYRQqSOImsE%2BlICX7X3bnSe%2BfKM3Zv2UZosU2CPO%2B1Iq86JO9nn%2FDYH6B%2FNHWts0k6QXf1G5ISlI%2FcYWnMe2QDdOIIh794r8W58Q%2B8dF%2F5NYnDCuCRKgZGr%2FUOk3sLe1kCgrk%2By8w80vdxOCQMN6P6GbeZVhMFSjr6E2PYGvGzVjEvMmznaYgK6I8jY9WVzigJOC%2BMHN%2BzVjEvMmznaZXRA%2FkTlwOLBTMqB7aZ91np%2B2IQpk63KWzaL7EpoajxeN5%2FTNSk2xc%3D; _UP_D_=pc; _UP_30C_6A_=st9cd620112savvjy9dotw0da33tal2b; _UP_TS_=sg1f164684aeb2016f3088369728ffd6746; _UP_E37_B7_=sg1f164684aeb2016f3088369728ffd6746; _UP_TG_=st9cd620112savvjy9dotw0da33tal2b; _UP_335_2B_=1; __pus=a7a78b1a90b688dfe7841e4bf2f98300AATYi/G+Qq7OARLPylNw0GynbNPPtSIJ465qoZjqcFqI9kpepQI0F2odEzE2QmRPM7PK1xqc4t3BONUmvArVGDZi; __kp=75e66880-8bd3-11f0-bef7-4517a1b89c67; __kps=AASjR2fXaMQGjkqOmoZ7mP8y; __ktd=8CQ/17ZlNp4OW6fTU/82Gg==; __uid=AASjR2fXaMQGjkqOmoZ7mP8y; tfstk=gwiredNw2kcX5T5XVjEF30cmOeE8YkRsrDNQKvD3F7VuFuMnuvMweJGSKWuUiXpRVuARxWDtMzNoOu1eYjruJ4NQNWrEpfJX1htseYELVCO6f6170TETEW2hOoX0FkyupDUkcYELxIO-fXzSebp22yruxKr0L85uxMc3ixVYpJfuKgvqnSFcqJVhrnV0d8ShEXqH3xVYKkVntzvqnSe3xWc_WXcR0Szk34K6i51JHzViESShbOe_rBHRRGjiz8zrxYV2ULo4UzP_k-2jEckiEceEvdbUTvgoN-hebIrm4bouuk-FDuMZobzqzBS4kqDtxruv_NHtEbugS0x2UXlmBVEoqBI7w2DmxSikdMPi5AE4HDOAqWum-0a8v_Az30kZY2Sy_6eDNKoKKT73r-e41KJVeezX7UhLO37dJr8Y3599BwQLr_y41KhAJwUR_-P6EY5..; __puus=12b95c5fbaf1cd00169b922736c44ab8AAQ6j7M6ljISsTkfnBTT7sD+zyzuFDcyO+DWgwPp73nV72cW9xdVvYEfaMym6BcE6/GmHtRfzJjTfxToR7I51+ly94BRR3y2JMvpCwCIdo0gAaGWUwxpNEXyy86L4VLJlo0lWhjJFkBqh40v5Sgo4/MFaWbx83Lb5SLN5uX1IUZvrvM8h8ME2SZqsjdnY5QZ56kf3EiUVptaJEBhKlsl+e7k')
+    quark = Quark(cookies='')
     import pprint, json
 
     # 测试获取路径文件映射
@@ -241,7 +241,7 @@ async def main():
     print('分享文件')
     async with aiohttp.ClientSession() as http_session:
         quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(
-            url="https://pan.quark.cn/s/ab6b5ed38f98/fe73cef3b3c64a85b07cc7287531ebe8",
+            url="",
             session=http_session
         )
         dir_details = await quark.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)

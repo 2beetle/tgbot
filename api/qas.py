@@ -2031,17 +2031,25 @@ async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     text=f"已开启节省网盘空间设置，即将清理 <b> {task.get('savepath')}</b> 下的旧文件",
                     parse_mode='html'
                 )
+                delete_message = f'删除 <b>{task.get("savepath")}</b> 下的旧文件：\n'
                 delete_files_fid = list()
                 path_file_map = await quark.get_path_file_map(paths=[task.get('savepath')])
                 for path, file in path_file_map.items():
                     path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
-                    for path_file in path_files:
+                    for index, path_file in enumerate(path_files):
                         if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
-                            logger.info(f'即将删除 <b> {task.get("savepath")}</b> 的 {path_file["file_name"]}')
+                            logger.info(f'即将删除 <b>{task.get("savepath")}</b> 的 {path_file["file_name"]}')
+                            prefix = '└──' if index == len(path_files) - 1 else '├──'
+                            delete_message += f"{prefix} {path_file["file_name"]}\n"
                             delete_files_fid.append(path_file['fid'])
+                if delete_files_fid:
+                    await quark.delete_files(delete_files_fid)
+                    await update.effective_message.reply_text(
+                        text=delete_message,
+                        parse_mode='html'
+                    )
 
-        # success = await qas.update(host=qas_config.host, data=data)
-        success = True
+        success = await qas.update(host=qas_config.host, data=data)
         if success:
             await update.effective_message.reply_text(
                 text="标记完成 ✅"
