@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes, CallbackQueryHandler, ConversationHandler
 
 from api.base import command
 from api.common import cancel_conversation_callback
-from api.user_config import get_user_save_space_mode
+from api.user_config import get_user_save_space_mode, get_user_quark_cookies
 from config.config import get_allow_roles_command_map, TIME_ZONE
 from db.models.log import OperationLog, OperationType
 from db.models.qas import QuarkAutoDownloadConfig
@@ -1977,6 +1977,7 @@ async def qas_run_script_handler(update: Update, context: ContextTypes.DEFAULT_T
     return await qas_run_script(update, context, session, user)
 
 
+@command(name='qas_tag_start_file', description="QAS 标记任务开始转存文件", args="{task id}")
 async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     await update.effective_message.reply_text(
         text="标记任务的开始转存文件"
@@ -2000,7 +2001,8 @@ async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE,
     else:
         task_list = [data["tasklist"][int(context.args[0])]]
     async with aiohttp.ClientSession() as http_session:
-        quark = Quark()
+        quark_cookies = await get_user_quark_cookies(user)
+        quark = Quark(cookies=quark_cookies)
         for index, task in enumerate(task_list):
             share_url = task.get('shareurl')
             quark_id, stoken, pdir_fid, _ = await quark.get_quark_id_stoken_pdir_fid(url=share_url, session=http_session)

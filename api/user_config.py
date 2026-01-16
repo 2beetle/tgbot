@@ -4,7 +4,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler
+from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 
 from api.common import cancel_conversation_callback
 from config.config import get_allow_roles_command_map, AVAILABLE_CLOUD_TYPES
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # 对话状态
 CLOUD_TYPE_SELECT = 0
 SAVE_SPACE_SELECT = 1
+QUARK_COOKIES_SET = 2
 
 # 从全局配置获取支持的云盘类型，转换为 UI 需要的格式
 AVAILABLE_CLOUD_TYPES_LIST = [
@@ -211,6 +212,118 @@ async def save_cloud_config(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     return ConversationHandler.END
 
 
+async def quark_cookies_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """夸克网盘 Cookies 配置"""
+    query = update.callback_query
+    await query.answer()
+
+    # 获取用户当前配置
+    quark_cookies = await get_user_quark_cookies(user)
+    has_cookies = bool(quark_cookies)
+    status = "✅ 已配置" if has_cookies else "⬜ 未配置"
+
+    buttons = [
+        [InlineKeyboardButton(f"{status}", callback_data="update_quark_cookies")],
+        [InlineKeyboardButton("❌ 关闭", callback_data="cancel_quark_config_conversation")]
+    ]
+
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    message = "<b>🍪 夸克网盘 Cookies</b>\n\n"
+    message += f"<b>当前状态:</b> {status}\n\n"
+    message += "<i>用于获取夸克网盘文件列表、删除文件等操作</i>\n"
+    if has_cookies:
+        masked_cookies = quark_cookies[:20] + "..." if len(quark_cookies) > 20 else quark_cookies
+        message += f"\n<i>已配置 Cookies: {masked_cookies}</i>"
+
+    try:
+        await query.edit_message_text(message, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        await update.effective_message.reply_text(message, reply_markup=keyboard, parse_mode="HTML")
+
+    return QUARK_COOKIES_SET
+
+
+async def update_quark_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """提示用户输入新的夸克网盘 Cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    message = "🍪 <b>请输入夸克网盘 Cookies</b>\n\n"
+    message += "<i>请在浏览器中登录夸克网盘，复制 Cookie 值</i>\n\n"
+    message += "<b>获取方式:</b>\n"
+    message += "1. 在浏览器中打开 <code>https://pan.quark.cn</code>\n"
+    message += "2. 登录你的夸克账号\n"
+    message += "3. 按 F12 打开开发者工具\n"
+    message += "4. 切换到 Network (网络) 标签\n"
+    message += "5. 刷新页面，找到任意请求\n"
+    message += "6. 在请求头中找到 <code>Cookie:</code> 字段\n"
+    message += "7. 复制完整的 Cookie 值"
+
+    buttons = [[InlineKeyboardButton("❌ 取消", callback_data="cancel_quark_config_conversation")]]
+
+    try:
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        await update.effective_message.reply_text(message, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+    return QUARK_COOKIES_SET
+
+
+async def quark_cookies_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """保存夸克网盘 Cookies"""
+    if not update.message or not update.message.text:
+        return
+
+    cookies = update.message.text.strip()
+
+    if not cookies:
+        await update.message.reply_text("❌ Cookies 不能为空")
+        return
+
+    # 导入加密函数
+    from utils.crypto import encrypt_sensitive_data
+
+    # 加密 Cookies
+    encrypted_cookies = encrypt_sensitive_data(cookies)
+
+    # 获取用户配置
+    user_config = user.configuration or {}
+    user_config['quark_cookies'] = encrypted_cookies
+
+    # 保存到数据库
+    user.configuration = user_config
+    flag_modified(user, "configuration")
+    session.commit()
+
+    message = "✅ <b>夸克网盘 Cookies 已保存</b>\n\n"
+    message += "<i>现在可以使用夸克网盘相关功能了</i>"
+
+    await update.message.reply_text(message, parse_mode="HTML")
+
+    return ConversationHandler.END
+
+
+# 获取用户夸克网盘 Cookies 的辅助函数
+async def get_user_quark_cookies(user: User) -> str:
+    """获取用户夸克网盘 Cookies（解密后）"""
+    if not user.configuration:
+        return ""
+
+    encrypted_cookies = user.configuration.get('quark_cookies', '')
+    if not encrypted_cookies:
+        return ""
+
+    from utils.crypto import decrypt_sensitive_data
+    try:
+        return decrypt_sensitive_data(encrypted_cookies)
+    except Exception as e:
+        logger.error(f"解密夸克 Cookies 失败: {e}")
+        return ""
+
+
 # 获取用户常用云盘类型的辅助函数
 def get_user_preferred_cloud_types(user: User) -> Optional[List[str]]:
     """获取用户常用云盘类型列表"""
@@ -284,5 +397,31 @@ handlers = [
         ],
         conversation_timeout=300,
         name="cloud_config_conversation"
+    ),
+    # 夸克网盘 Cookies 配置对话处理器
+    ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(
+                depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(quark_cookies_select),
+                pattern=r"^upsert_quark_configuration"
+            )
+        ],
+        states={
+            QUARK_COOKIES_SET: [
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(update_quark_cookies),
+                    pattern=r"^update_quark_cookies$"
+                ),
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(quark_cookies_set)
+                ),
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_quark_config_conversation$")
+        ],
+        conversation_timeout=300,
+        name="quark_config_conversation"
     )
 ]
