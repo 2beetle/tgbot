@@ -2038,7 +2038,7 @@ async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE,
                     for path_file in path_files:
                         if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
                             logger.info(f'即将删除 <b> {task.get("savepath")}</b> 的 {path_file["file_name"]}')
-                            delete_files_fid.append(path_file['0d4154da3afc4d61a86dcdb8440cd9a2'])
+                            delete_files_fid.append(path_file['fid'])
 
         # success = await qas.update(host=qas_config.host, data=data)
         success = True
