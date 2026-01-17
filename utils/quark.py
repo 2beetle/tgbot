@@ -79,7 +79,7 @@ class Quark:
                     'pwd_id': quark_id,
                     'stoken': stoken,
                     'ver': 2,
-                    "_sort": "file_type:asc,updated_at:desc"
+                    "_sort": "file_type:desc,updated_at:desc",
                 }
             ) as sub_resp:
                 data = await sub_resp.json()
