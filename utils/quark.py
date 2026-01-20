@@ -67,7 +67,12 @@ class Quark:
             return quark_id, stoken, pdir_fid, None
 
     async def get_quark_dir_detail(self, quark_id, stoken, pdir_fid, include_dir=True, size=40):
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(
+            total=60,        # 总超时 60 秒
+            connect=15,      # 连接超时 15 秒
+            sock_read=30     # 读取超时 30 秒
+        )
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(
                 f'https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail',
                 params={
@@ -92,10 +97,11 @@ class Quark:
                     return [file for file in data['data']['list'] if not file.get('dir')]
 
     async def check_link(self, session: aiohttp.ClientSession, link: str):
-        quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link, session=session)
-        if error is not None:
-            return link, error
-        async with session.get(
+        try:
+            quark_id, stoken, pdir_fid, error = await self.get_quark_id_stoken_pdir_fid(url=link, session=session)
+            if error is not None:
+                return link, error
+            async with session.get(
                 "https://drive-h.quark.cn/1/clouddrive/share/sharepage/detail",
                 params={
                     "pr": "ucpro",
@@ -107,30 +113,50 @@ class Quark:
                     "stoken": stoken,
                     "ver": 2,
                 },
-        ) as resp:
-            if resp.ok:
-                return link, "有效"
-            else:
-                logger.error(f"link {link} (quark_id: {quark_id}, stoken: {stoken}, pdir_fid: {pdir_fid}) check fail: {await resp.text()}")
-                data = await resp.json()
-                return link, data.get("message")
+            ) as resp:
+                if resp.ok:
+                    return link, "有效"
+                else:
+                    logger.error(f"link {link} (quark_id: {quark_id}, stoken: {stoken}, pdir_fid: {pdir_fid}) check fail: {await resp.text()}")
+                    data = await resp.json()
+                    return link, data.get("message", "检查失败")
+        except Exception as e:
+            logger.error(f"check_link {link} error: {e}")
+            return link, f"检查失败: {str(e)}"
 
     async def links_valid(self, links: list):
         result = dict()
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(
+            total=60,        # 总超时 60 秒
+            connect=15,      # 连接超时 15 秒
+            sock_read=30     # 读取超时 30 秒
+        )
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             tasks = [self.check_link(session, link) for link in links]
-            results = await asyncio.gather(*tasks)
-            result.update(dict(results))
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    # 如果是异常对象，记录错误并继续处理其他结果
+                    logger.error(f"check_link task failed with exception: {r}")
+                    continue
+                if isinstance(r, tuple) and len(r) == 2:
+                    link, status = r
+                    result[link] = status
         return result
 
     async def get_path_file_map(self, paths: list):
         files = []
         file_paths = paths[:50]
+        timeout = aiohttp.ClientTimeout(
+            total=60,        # 总超时 60 秒
+            connect=15,      # 连接超时 15 秒
+            sock_read=30     # 读取超时 30 秒
+        )
         while True:
             url = f"https://drive-pc.quark.cn/1/clouddrive/file/info/path_list"
             querystring = {"pr": "ucpro", "fr": "pc"}
             payload = {"file_path": file_paths, "namespace": "0"}
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with await session.post(url, params=querystring, json=payload, headers=self.headers) as resp:
                     response = await resp.json()
                     if response["code"] == 0:
@@ -200,7 +226,12 @@ class Quark:
                 else:
                     return await recursive_get_quark_clouddrive_files(pdir_fid, session, size, page+1, files)
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(
+            total=60,        # 总超时 60 秒
+            connect=15,      # 连接超时 15 秒
+            sock_read=30     # 读取超时 30 秒
+        )
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             result = await recursive_get_quark_clouddrive_files(pdir_fid, session, size, 1, [])
 
         if isinstance(result, list):
@@ -210,7 +241,12 @@ class Quark:
 
 
     async def delete_files(self, filelist: list):
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(
+            total=60,        # 总超时 60 秒
+            connect=15,      # 连接超时 15 秒
+            sock_read=30     # 读取超时 30 秒
+        )
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 f'https://drive-pc.quark.cn/1/clouddrive/file/delete?pr=ucpro&fr=pc&uc_param_str=',
                 headers=self.headers,
