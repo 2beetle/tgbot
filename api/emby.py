@@ -161,7 +161,7 @@ async def emby_notification_set(update: Update, context: ContextTypes.DEFAULT_TY
     emby = Emby(host=emby_config.host, token=api_token)
     access_token = await emby.get_access_token(username, password)
     resp = await emby.update_notification(access_token, notification_id, event_id, operation)
-    if resp.ok:
+    if resp:
         await update.effective_message.reply_text("更新通知配置成功")
     else:
         await update.effective_message.reply_text("更新通知配置失败")

@@ -232,7 +232,7 @@ class Emby:
                 },
                 json=notification
             ) as resp:
-                if resp.status == 200:
+                if resp.status == 204:
                     return resp
                 else:
                     error_text = await resp.text()
