@@ -12,6 +12,12 @@ TG_DB_PATH = os.path.join(DATA_PATH, 'tgbot.db')
 
 TG_BOT_TOKEN = os.getenv('TG_BOT_TOKEN')
 
+# Telegram Bot 代理配置（可选）
+# 支持格式: http://host:port, https://host:port, socks5://host:port
+# 示例: http://127.0.0.1:7890 或 socks5://user:pass@host:port
+# 注意：此代理仅用于 Telegram Bot 连接，不影响其他服务（TMDB、CloudSaver 等）
+TELEGRAM_PROXY_URL = os.getenv('TELEGRAM_PROXY_URL')
+
 # 加密配置 - 必需的环境变量
 CRYPTO_PASSWORD = os.getenv('CRYPTO_PASSWORD')
 CRYPTO_SALT = os.getenv('CRYPTO_SALT')

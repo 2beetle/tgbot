@@ -9,7 +9,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
 
 from api.base import get_handlers, command, get_bot_commands
 from api.commands import set_commands
-from config.config import TG_BOT_TOKEN, ROLE_COMMANDS, DEFAULT_COMMANDS
+from config.config import TG_BOT_TOKEN, ROLE_COMMANDS, DEFAULT_COMMANDS, TELEGRAM_PROXY_URL
 
 from db.main import Init
 from db.models.user import User
@@ -207,8 +207,14 @@ if __name__ == '__main__':
     init = Init()
     cloud_saver = CloudSaver()
 
-    application = ApplicationBuilder()\
-        .token(TG_BOT_TOKEN)\
+    # 构建 Application，如果配置了代理则使用代理
+    app_builder = ApplicationBuilder().token(TG_BOT_TOKEN)
+
+    if TELEGRAM_PROXY_URL:
+        logger.info(f"Using proxy for Telegram Bot: {TELEGRAM_PROXY_URL}")
+        app_builder = app_builder.proxy(TELEGRAM_PROXY_URL)
+
+    application = app_builder\
         .post_init(post_init)\
         .post_shutdown(post_shutdown)\
         .build()

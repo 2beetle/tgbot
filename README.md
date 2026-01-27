@@ -104,6 +104,10 @@
          - CRYPTO_PASSWORD=your_strong_password_16chars
          - CRYPTO_SALT=your_random_salt_16chars
 
+         # Telegram 代理配置（可选，用于网络受限地区）
+         # - TELEGRAM_PROXY_URL=http://127.0.0.1:7890
+         # - TELEGRAM_PROXY_URL=socks5://user:pass@host:port
+
          # 可选配置
          - TMDB_API_KEY=your_tmdb_api_key
          - TMDB_POSTER_BASE_URL=https://image.tmdb.org/t/p/original
@@ -148,6 +152,9 @@
    export TG_BOT_TOKEN=your_telegram_bot_token
    export CRYPTO_PASSWORD=your_strong_password_16chars
    export CRYPTO_SALT=your_random_salt_16chars
+
+   # 可选：配置 Telegram 代理（用于网络受限地区）
+   # export TELEGRAM_PROXY_URL=http://127.0.0.1:7890
    ```
 
 4. **初始化数据库**
@@ -179,6 +186,22 @@
 > 🔒 **安全提示**：`CRYPTO_PASSWORD` 和 `CRYPTO_SALT` 一旦设置，后续修改会导致已加密数据无法解密，请妥善保管。
 
 #### 可选环境变量
+
+<details>
+<summary><b>Telegram 代理配置</b>（点击展开）</summary>
+
+| 变量名 | 说明 | 示例 |
+|--------|------|------|
+| `TELEGRAM_PROXY_URL` | Telegram Bot 代理地址（用于网络受限地区） | `http://127.0.0.1:7890` 或 `socks5://user:pass@host:port` |
+
+**支持的代理格式：**
+- HTTP 代理：`http://host:port`
+- HTTPS 代理：`https://host:port`
+- SOCKS5 代理：`socks5://host:port` 或 `socks5://user:pass@host:port`
+
+**注意：** 此代理仅用于 Telegram Bot 连接，不影响其他服务（TMDB、CloudSaver 等）的网络请求。
+
+</details>
 
 <details>
 <summary><b>TMDB 配置</b>（点击展开）</summary>
