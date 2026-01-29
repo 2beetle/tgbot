@@ -42,10 +42,10 @@ def get_decrypted_api_token(qas_config):
 HOST_SET, API_TOKEN_SET, SAVE_PATH_PREFIX_SET, MOVIE_SAVE_PATH_PREFIX_SET, PATTERN_SET, REPLACE_SET = range(6)
 QAS_EDIT_FIELD_SELECT, QAS_EDIT_HOST, QAS_EDIT_API_TOKEN, QAS_EDIT_SAVE_PATH, QAS_EDIT_MOVIE_PATH, QAS_EDIT_PATTERN, QAS_EDIT_REPLACE = range(6, 13)
 
-QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_PATTERN_REPLACE_GENERATE, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET = range(5)
+QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_PATTERN_REPLACE_GENERATE, QAS_ADD_TASK_REPLACE_SET, QAS_ADD_TASK_ARIA2_SET, QAS_ADD_TASK_IGNORE_EXTENSION_SET = range(6)
 
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
-QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_SAVEPATH, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_PATTERN_GENERATE, QAS_TASK_UPDATE_REPLACE_GENERATE, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2 = range(6, 14)
+QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_SAVEPATH, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_PATTERN_GENERATE, QAS_TASK_UPDATE_REPLACE_GENERATE, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2, QAS_TASK_UPDATE_IGNORE_EXTENSION = range(6, 15)
 
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
@@ -917,11 +917,40 @@ async def qas_add_task_aria2_set_button(update: Update, context: ContextTypes.DE
         })
         await update.effective_message.reply_text(f"开启 aira2 下载 ✅")
 
+    return await qas_add_task_ask_ignore_extension(update, context, session, user)
+
+
+async def qas_add_task_ask_ignore_extension(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    await update.effective_message.reply_text(
+        text="是否忽略后缀名匹配：",
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(f"忽略后缀名 ✅", callback_data=f"qas_add_task_ignore_extension_button:true")
+            ],
+            [
+                InlineKeyboardButton(f"不忽略后缀名 ❌", callback_data=f"qas_add_task_ignore_extension_button:false")
+            ]
+        ])
+    )
+    return QAS_ADD_TASK_IGNORE_EXTENSION_SET
+
+
+async def qas_add_task_ignore_extension_set_button(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    query = update.callback_query
+    await query.answer()
+    _, ignore_extension = update.callback_query.data.split(':')
+    if ignore_extension == 'false':
+        context.user_data['qas_add_task']['ignore_extension'] = False
+        await update.effective_message.reply_text(f"不忽略后缀名 ❌")
+    else:
+        context.user_data['qas_add_task']['ignore_extension'] = True
+        await update.effective_message.reply_text(f"忽略后缀名 ✅")
+
     return await qas_add_task_finish(update, context, session, user)
 
 
 async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
-    async def qas_add_task(qas_instance, qas_config_instance, task_name: str, share_url: str, save_path: str, pattern: str, replace: str, aria2: bool, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def qas_add_task(qas_instance, qas_config_instance, task_name: str, share_url: str, save_path: str, pattern: str, replace: str, aria2: bool, ignore_extension: bool, update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = await qas_instance.add_job(
             host=qas_config_instance.host,
             task_name=task_name,
@@ -933,11 +962,11 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if data:
             save_path = data.get('data').get('savepath')
-            # 修改 aria2
+            # 修改 aria2 和 ignore_extension
             data = await qas_instance.data(host=qas_config_instance.host)
             for index, task in enumerate(data.get("tasklist", [])):
                 if task.get("savepath") == save_path:
-                    data["tasklist"][index]['ignore_extension'] = True
+                    data["tasklist"][index]['ignore_extension'] = ignore_extension
                     if aria2 is False:
                         data["tasklist"][index]["addition"]["aria2"]["auto_download"] = False
                     else:
@@ -954,6 +983,7 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 📦 <b>扩展设置</b>：
 - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if data['tasklist'][index]["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+- 📄 <b>忽略后缀名</b>：{"✅ 开启" if data['tasklist'][index].get("ignore_extension") else "❌ 关闭"}
 - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if data['tasklist'][index]["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {data['tasklist'][index]["addition"].get("emby", {}).get("media_id", "")}）
 
 🌐 <a href="{qas_config_instance.host}"><b>你的 QAS 服务</b></a>
@@ -1019,6 +1049,7 @@ Ai识别季数完成，识别结果为：
                 pattern=context.user_data['qas_add_task']['pattern'],
                 replace=replace,
                 aria2=context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True),
+                ignore_extension=context.user_data['qas_add_task'].get('ignore_extension', True),
                 update=update,
                 context=context
             )
@@ -1032,6 +1063,7 @@ Ai识别季数完成，识别结果为：
             pattern=context.user_data['qas_add_task']['pattern'],
             replace=context.user_data['qas_add_task']['replace'],
             aria2=context.user_data['qas_add_task']['addition'].get('aria2', {}).get('auto_download', True),
+            ignore_extension=context.user_data['qas_add_task'].get('ignore_extension', True),
             update=update,
             context=context
         )
@@ -1084,6 +1116,7 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
 🎯 <b>匹配规则</b>：<code>{task.get('pattern', '未设置')}</code>
 🔁 <b>替换模板</b>：<code>{task.get('replace', '未设置')}</code>
 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if task.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
+📄 <b>忽略后缀名</b>：{"✅ 开启" if task.get('ignore_extension') else "❌ 关闭"}
 """
             if task.get('shareurl_ban'):
                 task_text += f"🚫：{task.get('shareurl_ban')}"
@@ -1155,6 +1188,7 @@ async def qas_list_err_task(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 🎯 <b>匹配规则</b>：<code>{task.get('pattern', '未设置')}</code>
 🔁 <b>替换模板</b>：<code>{task.get('replace', '未设置')}</code>
 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if task.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
+📄 <b>忽略后缀名</b>：{"✅ 开启" if task.get('ignore_extension') else "❌ 关闭"}
 """
             if task.get('shareurl_ban'):
                 task_text += f"🚫：{task.get('shareurl_ban')}"
@@ -1219,6 +1253,7 @@ async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
         [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
         [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
         [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
+        [InlineKeyboardButton("📄 忽略后缀名", callback_data="qas_task_update_ignore_extension")],
         [InlineKeyboardButton("✅ 完成更新", callback_data="qas_task_update_finish")],
         [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
     ]
@@ -1232,6 +1267,7 @@ async def qas_update_task(update: Update, context: ContextTypes.DEFAULT_TYPE, se
 🎯 <b>Pattern：</b> <code>{task_info.get('pattern')}</code>
 🔄 <b>Replace：</b> <code>{task_info.get('replace')}</code>
 🧲 <b>Aria2 自动下载：</b> {"✅ 开启" if task_info.get('addition', {}).get('aria2', {}).get('auto_download') else "❌ 关闭"}
+📄 <b>忽略后缀名：</b> {"✅ 开启" if task_info.get('ignore_extension') else "❌ 关闭"}
 
 请选择要修改的字段：
     """
@@ -1338,6 +1374,20 @@ async def qas_task_update_field_select_handler(update: Update, context: ContextT
             ])
         )
         return QAS_TASK_UPDATE_ARIA2
+    elif action == "qas_task_update_ignore_extension":
+        # 修改忽略后缀名设置
+        original_task = context.user_data.get("qas_update_task_original", {})
+        current_status = original_task.get('ignore_extension', False)
+
+        await update.effective_message.reply_text(
+            f"当前忽略后缀名设置：{'✅ 开启' if current_status else '❌ 关闭'}\n请选择忽略后缀名设置：",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ 开启", callback_data="qas_task_update_ignore_extension_enable")],
+                [InlineKeyboardButton("❌ 关闭", callback_data="qas_task_update_ignore_extension_disable")],
+                [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
+            ])
+        )
+        return QAS_TASK_UPDATE_IGNORE_EXTENSION
 
 
 async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
@@ -1699,6 +1749,22 @@ async def qas_task_update_aria2_set(update: Update, context: ContextTypes.DEFAUL
     return await qas_task_update_show_menu(update, context, session, user)
 
 
+async def qas_task_update_ignore_extension_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理忽略后缀名设置"""
+    query = update.callback_query
+    await query.answer()
+    action = query.data
+
+    if action == "qas_task_update_ignore_extension_enable":
+        context.user_data['qas_update_task_edit_data']['ignore_extension'] = True
+        await update.effective_message.reply_text("忽略后缀名已开启")
+    elif action == "qas_task_update_ignore_extension_disable":
+        context.user_data['qas_update_task_edit_data']['ignore_extension'] = False
+        await update.effective_message.reply_text("忽略后缀名已关闭")
+
+    return await qas_task_update_show_menu(update, context, session, user)
+
+
 async def qas_task_update_savepath_set(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     """处理保存路径设置"""
     if not update.message:
@@ -1727,6 +1793,7 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
     pattern = edit_data.get("pattern", original_task.get("pattern"))
     replace = edit_data.get("replace", original_task.get("replace"))
     aria2_auto_download = edit_data.get("aria2_auto_download", original_task.get("addition", {}).get("aria2", {}).get("auto_download", False))
+    ignore_extension = edit_data.get("ignore_extension", original_task.get("ignore_extension", False))
 
     keyboard = [
         [InlineKeyboardButton("🔗 分享链接", callback_data="qas_task_update_share_url")],
@@ -1734,6 +1801,7 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton("🎯 Pattern", callback_data="qas_task_update_pattern")],
         [InlineKeyboardButton("🔄 Replace", callback_data="qas_task_update_replace")],
         [InlineKeyboardButton("🧲 Aria2 设置", callback_data="qas_task_update_aria2")],
+        [InlineKeyboardButton("📄 忽略后缀名", callback_data="qas_task_update_ignore_extension")],
         [InlineKeyboardButton("✅ 完成更新", callback_data="qas_task_update_finish")],
         [InlineKeyboardButton("❌ 取消更新", callback_data="cancel_qas_update_task")]
     ]
@@ -1747,6 +1815,7 @@ async def qas_task_update_show_menu(update: Update, context: ContextTypes.DEFAUL
 🎯 <b>Pattern：</b> <code>{pattern}</code>
 🔄 <b>Replace：</b> <code>{replace}</code>
 🧲 <b>Aria2 自动下载：</b> {"✅ 开启" if aria2_auto_download else "❌ 关闭"}
+📄 <b>忽略后缀名：</b> {"✅ 开启" if ignore_extension else "❌ 关闭"}
 
 请选择要修改的字段：
     """
@@ -1790,6 +1859,8 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
         if "aria2" not in update_data["addition"]:
             update_data["addition"]["aria2"] = {}
         update_data["addition"]["aria2"]["auto_download"] = edit_data["aria2_auto_download"]
+    if "ignore_extension" in edit_data:
+        update_data["ignore_extension"] = edit_data["ignore_extension"]
 
     # 调用API更新任务
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
@@ -1818,7 +1889,8 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
             data['tasklist'][index]["addition"]["aria2"]["auto_download"] = update_data["addition"]["aria2"]["auto_download"] if update_data["addition"]["aria2"]["auto_download"] else False
 
             data['tasklist'][index]['startfid'] = ''
-            data["tasklist"][index]['ignore_extension'] = True
+            if "ignore_extension" in edit_data:
+                data["tasklist"][index]['ignore_extension'] = edit_data["ignore_extension"]
             break
     success = await qas.update(host=qas_config.host, data=data)
 
@@ -1837,6 +1909,7 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
 
 📦 <b>扩展设置</b>：
 - 🧲 <b>Aria2 自动下载</b>：{"✅ 开启" if updated_task["addition"]["aria2"]["auto_download"] else "❌ 关闭"}
+- 📄 <b>忽略后缀名</b>：{"✅ 开启" if updated_task.get("ignore_extension") else "❌ 关闭"}
 - 🧬 <b>Emby 匹配</b>：{"✅ 开启" if updated_task["addition"].get("emby", {}).get("try_match") else "❌ 关闭"}（Media ID: {updated_task["addition"].get("emby", {}).get("media_id", "")}）
 
 🌐 <a href="{qas_config.host}"><b>你的 QAS 服务</b></a>
@@ -2348,6 +2421,12 @@ handlers = [
                         depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_aria2_set_button),
                         pattern=r"^qas_add_task_aria2_button:.*$"
                 )
+            ],
+            QAS_ADD_TASK_IGNORE_EXTENSION_SET: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_add_task_ignore_extension_set_button),
+                        pattern=r"^qas_add_task_ignore_extension_button:.*$"
+                )
             ]
         },
         fallbacks=[
@@ -2444,6 +2523,12 @@ handlers = [
                 CallbackQueryHandler(
                         depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_aria2_set),
                         pattern=r"^qas_task_update_aria2_(enable|disable)$"
+                )
+            ],
+            QAS_TASK_UPDATE_IGNORE_EXTENSION: [
+                CallbackQueryHandler(
+                        depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_task_update_ignore_extension_set),
+                        pattern=r"^qas_task_update_ignore_extension_(enable|disable)$"
                 )
             ]
         },
