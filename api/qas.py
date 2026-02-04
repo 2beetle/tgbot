@@ -2075,6 +2075,25 @@ async def qas_run_script(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
                     text=delete_message,
                     parse_mode='html'
                 )
+            # 清理完成后删除对应的 QAS 电影任务
+            try:
+                qas_task_index = int(context.args[0]) if len(context.args) >= 1 else 0
+                qas_task_name = data['tasklist'][qas_task_index]['taskname']
+                data['tasklist'].pop(qas_task_index)
+                success = await qas.update(host=qas_config.host, data=data)
+                if success:
+                    await update.effective_message.reply_text(
+                        text=f"已删除 QAS 电影任务 {qas_task_name}",
+                    )
+                else:
+                    await update.effective_message.reply_text(
+                        text=f"删除 QAS 电影任务 {qas_task_name} 失败",
+                    )
+            except Exception as exc:
+                logger.error(f"删除 QAS 电影任务失败: {exc}")
+                await update.effective_message.reply_text(
+                    text="删除 QAS 电影任务失败",
+                )
 
 
 async def qas_run_script_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
