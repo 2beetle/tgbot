@@ -82,10 +82,10 @@ class Emby:
             async with session.get(
                 f"{self.host}/emby/Items",
                 params={
-                    'Recursive': True,
+                    'Recursive': 'true',
                     'SearchTerm': resource_name,
                     'IncludeItemTypes': "Series",
-                    'EnableImages': True,
+                    'EnableImages': 'true',
                     'api_key': self.token,
                 }
             ) as resp:
@@ -146,11 +146,11 @@ class Emby:
             async with session.post(
                 f"{self.host}/emby/Items/{item_id}/Refresh",
                 params={
-                    "Recursive": True,
+                    "Recursive": "true",
                     "MetadataRefreshMode": "FullRefresh",
                     "ImageRefreshMode": "FullRefresh",
-                    "ReplaceAllMetadata": True,
-                    "ReplaceAllImages": True,
+                    "ReplaceAllMetadata": "true",
+                    "ReplaceAllImages": "true",
                     "api_key": self.token,
                 }
             ) as resp:
