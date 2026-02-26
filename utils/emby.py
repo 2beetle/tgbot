@@ -89,7 +89,7 @@ class Emby:
                     'api_key': self.token,
                 }
             ) as resp:
-                if resp.status == 200:
+                if 300 > resp.status >= 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
@@ -186,7 +186,7 @@ class Emby:
                     "Pw": user_pwd,
                 }
             ) as resp:
-                if resp.status == 200:
+                if 300 > resp.status >= 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
@@ -201,7 +201,7 @@ class Emby:
                     "X-Emby-Token": access_token
                 }
             ) as resp:
-                if resp.status == 200:
+                if 300 > resp.status >= 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
