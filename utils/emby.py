@@ -134,7 +134,7 @@ class Emby:
                     'api_key': self.token,
                 }
             ) as resp:
-                if resp.status == 200:
+                if 300 > resp.status >= 200:
                     return await resp.json()
                 else:
                     error_text = await resp.text()
@@ -154,7 +154,7 @@ class Emby:
                     "api_key": self.token,
                 }
             ) as resp:
-                if resp.status == 200:
+                if 300 > resp.status >= 200:
                     return True
                 else:
                     error_text = await resp.text()
