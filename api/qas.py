@@ -999,6 +999,9 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
                         InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
@@ -1931,6 +1934,9 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
                     InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{task_id}")
                 ],
                 [
+                    InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{task_id}")
+                ],
+                [
                     InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{task_id}")
                 ],
                 [
@@ -2229,26 +2235,24 @@ async def qas_delete_cloud_files_handler(update: Update, context: ContextTypes.D
 
         path_files = await quark.get_quark_clouddrive_files(pdir_fid=path_file_map[save_path]['fid'])
 
-        # 过滤出文件(非目录)
-        files_to_delete = [f for f in path_files if not f['dir']]
-
-        if not files_to_delete:
+        if not path_files:
             await update.effective_message.reply_text(
-                text=f"📁 路径 <b>{save_path}</b> 下没有文件",
+                text=f"📁 路径 <b>{save_path}</b> 下没有内容",
                 parse_mode='html'
             )
             return
 
-        # 构建文件列表消息
-        file_list_message = f"⚠️ 即将删除 <b>{save_path}</b> 下的 {len(files_to_delete)} 个文件：\n\n"
-        for idx, file in enumerate(files_to_delete[:20]):  # 最多显示20个
-            prefix = '└──' if idx == len(files_to_delete) - 1 and len(files_to_delete) <= 20 else '├──'
-            file_list_message += f"{prefix} {file['file_name']}\n"
+        # 构建文件列表消息(显示所有文件和目录)
+        file_list_message = f"⚠️ 即将删除 <b>{save_path}</b> 目录及其下的所有内容（共 {len(path_files)} 项）：\n\n"
+        for idx, file in enumerate(path_files[:20]):  # 最多显示20个
+            prefix = '└──' if idx == len(path_files) - 1 and len(path_files) <= 20 else '├──'
+            file_type = '📁' if file['dir'] else '📄'
+            file_list_message += f"{prefix} {file_type} {file['file_name']}\n"
 
-        if len(files_to_delete) > 20:
-            file_list_message += f"\n... 还有 {len(files_to_delete) - 20} 个文件未显示"
+        if len(path_files) > 20:
+            file_list_message += f"\n... 还有 {len(path_files) - 20} 项未显示"
 
-        file_list_message += "\n\n⚠️ <b>此操作不可恢复，请确认是否继续？</b>"
+        file_list_message += f"\n\n⚠️ <b>注意：将删除 {save_path} 目录本身及其所有内容，此操作不可恢复！</b>"
 
         # 显示确认按钮
         await update.effective_message.reply_text(
@@ -2298,20 +2302,28 @@ async def qas_delete_cloud_files_confirm_handler(update: Update, context: Contex
 
     try:
         path_file_map = await quark.get_path_file_map(paths=[save_path])
-        path_files = await quark.get_quark_clouddrive_files(pdir_fid=path_file_map[save_path]['fid'])
 
-        # 收集要删除的文件fid
-        delete_files_fid = [f['fid'] for f in path_files if not f['dir']]
+        # 收集要删除的文件和目录fid
+        delete_files_fid = []
+
+        for path, file in path_file_map.items():
+            # 先添加父目录的fid
+            delete_files_fid.append(file['fid'])
+
+            # 获取目录下的所有文件和子目录
+            path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
+            for path_file in path_files:
+                delete_files_fid.append(path_file['fid'])
 
         if delete_files_fid:
             await quark.delete_files(delete_files_fid)
             await update.effective_message.reply_text(
-                text=f"✅ 成功删除 <b>{save_path}</b> 下的 {len(delete_files_fid)} 个文件",
+                text=f"✅ 成功删除 <b>{save_path}</b> 及其下的 {len(delete_files_fid)} 个项目",
                 parse_mode='html'
             )
         else:
             await update.effective_message.reply_text(
-                text=f"📁 路径 <b>{save_path}</b> 下没有文件",
+                text=f"📁 路径 <b>{save_path}</b> 下没有内容",
                 parse_mode='html'
             )
     except Exception as e:
@@ -2390,6 +2402,9 @@ async def qas_view_task_regex(update: Update, context: ContextTypes.DEFAULT_TYPE
             ],
             [
                 InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
+            ],
+            [
+                InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{index}")
             ],
             [
                 InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
