@@ -262,10 +262,35 @@ class Quark:
                     return None
                 return data
 
+    async def get_account_info(self):
+        """获取账户信息,用于检查cookies是否有效"""
+        url = "https://pan.quark.cn/account/info"
+        querystring = {"fr": "pc", "platform": "pc"}
+        timeout = aiohttp.ClientTimeout(
+            total=30,        # 总超时 30 秒
+            connect=10,      # 连接超时 10 秒
+            sock_read=20     # 读取超时 20 秒
+        )
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    url,
+                    headers=self.headers,
+                    params=querystring
+                ) as response:
+                    data = await response.json()
+                    if data.get("data"):
+                        return data["data"]
+                    else:
+                        return False
+        except Exception as e:
+            logger.error(f'Failed to get account info: {e}')
+            return False
+
 
 async def main():
     quark = Quark(cookies='')
-    import pprint, json
+    import json
 
     # 测试获取路径文件映射
     path_file_map = await quark.get_path_file_map(paths=['/tv/大主宰 (2023)/Season 01'])

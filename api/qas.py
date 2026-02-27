@@ -1132,6 +1132,9 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
                         InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
@@ -1202,6 +1205,9 @@ async def qas_list_err_task(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     ],
                     [
                         InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{index}")
                     ],
                     [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
@@ -2152,37 +2158,6 @@ async def qas_tag_start_file(update: Update, context: ContextTypes.DEFAULT_TYPE,
                         text=f"即将标记任务 <b>{data['tasklist'][int(context.args[0])]['taskname']}</b> 的开始转存文件为 <b>{dir_details[0]['file_name']}</b> ({latest_datetime.strftime('%Y年%m月%d日 %H:%M:%S')})",
                         parse_mode='html'
                     )
-            if latest_timestamp and get_user_save_space_mode(user):
-                # 检查是否配置了夸克 cookies
-                quark_cookies = await get_user_quark_cookies(user)
-                if not quark_cookies:
-                    await update.effective_message.reply_text(
-                        text="⚠️ 已开启节省网盘空间模式，但未配置夸克网盘 Cookies。\n请使用 /upsert_configuration 命令配置「夸克网盘」Cookies 后再试。",
-                        parse_mode='html'
-                    )
-                    # 跳过删除旧文件的逻辑，继续标记开始文件
-                else:
-                    await update.effective_message.reply_text(
-                        text=f"已开启节省网盘空间设置，即将清理 <b> {task.get('savepath')}</b> 下的旧文件",
-                        parse_mode='html'
-                    )
-                    delete_message = f'删除 <b>{task.get("savepath")}</b> 下的旧文件：\n'
-                    delete_files_fid = list()
-                    path_file_map = await quark.get_path_file_map(paths=[task.get('savepath')])
-                    for path, file in path_file_map.items():
-                        path_files = await quark.get_quark_clouddrive_files(pdir_fid=file['fid'])
-                        for idx, path_file in enumerate(path_files):
-                            if not path_file['dir'] and int(path_file['l_updated_at']) < latest_timestamp:
-                                logger.info(f'即将删除 <b>{task.get("savepath")}</b> 的 {path_file["file_name"]}')
-                                prefix = '└──' if idx == len(path_files) - 1 else '├──'
-                                delete_message += f"{prefix} {path_file["file_name"]}\n"
-                                delete_files_fid.append(path_file['fid'])
-                    if delete_files_fid:
-                        await quark.delete_files(delete_files_fid)
-                        await update.effective_message.reply_text(
-                            text=delete_message,
-                            parse_mode='html'
-                        )
 
         success = await qas.update(host=qas_config.host, data=data)
         if success:
@@ -2200,6 +2175,159 @@ async def qas_tag_start_file_handler(update: Update, context: ContextTypes.DEFAU
     await query.answer()
     context.args = [int(query.data.split(":")[1])]
     return await qas_tag_start_file(update, context, session, user)
+
+
+async def qas_delete_cloud_files_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """删除任务对应路径的云盘文件 - 显示确认对话框"""
+    query = update.callback_query
+    await query.answer()
+    task_index = int(query.data.split(":")[1])
+
+    # 获取QAS配置
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    if not qas_config:
+        await update.effective_message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
+        return
+
+    # 检查是否配置了夸克 cookies
+    quark_cookies = await get_user_quark_cookies(user)
+    if not quark_cookies:
+        await update.effective_message.reply_text(
+            text="⚠️ 未配置夸克网盘 Cookies。\n请使用 /upsert_configuration 命令配置「夸克网盘」Cookies 后再试。",
+            parse_mode='html'
+        )
+        return
+
+    # 获取任务数据
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return
+
+    qas = QuarkAutoDownload(api_token=api_token)
+    data = await qas.data(host=qas_config.host)
+    task = data['tasklist'][task_index]
+    save_path = task.get('savepath')
+
+    await update.effective_message.reply_text(
+        text=f"正在查询 <b>{save_path}</b> 下的文件...",
+        parse_mode='html'
+    )
+
+    # 获取云盘文件列表
+    quark = Quark(cookies=quark_cookies)
+    try:
+        path_file_map = await quark.get_path_file_map(paths=[save_path])
+        if not path_file_map or save_path not in path_file_map:
+            await update.effective_message.reply_text(
+                text=f"❌ 未找到路径 <b>{save_path}</b>",
+                parse_mode='html'
+            )
+            return
+
+        path_files = await quark.get_quark_clouddrive_files(pdir_fid=path_file_map[save_path]['fid'])
+
+        # 过滤出文件(非目录)
+        files_to_delete = [f for f in path_files if not f['dir']]
+
+        if not files_to_delete:
+            await update.effective_message.reply_text(
+                text=f"📁 路径 <b>{save_path}</b> 下没有文件",
+                parse_mode='html'
+            )
+            return
+
+        # 构建文件列表消息
+        file_list_message = f"⚠️ 即将删除 <b>{save_path}</b> 下的 {len(files_to_delete)} 个文件：\n\n"
+        for idx, file in enumerate(files_to_delete[:20]):  # 最多显示20个
+            prefix = '└──' if idx == len(files_to_delete) - 1 and len(files_to_delete) <= 20 else '├──'
+            file_list_message += f"{prefix} {file['file_name']}\n"
+
+        if len(files_to_delete) > 20:
+            file_list_message += f"\n... 还有 {len(files_to_delete) - 20} 个文件未显示"
+
+        file_list_message += "\n\n⚠️ <b>此操作不可恢复，请确认是否继续？</b>"
+
+        # 显示确认按钮
+        await update.effective_message.reply_text(
+            text=file_list_message,
+            parse_mode='html',
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ 确认删除", callback_data=f"qas_delete_cloud_files_confirm:{task_index}"),
+                    InlineKeyboardButton("❌ 取消", callback_data=f"qas_delete_cloud_files_cancel:{task_index}")
+                ]
+            ])
+        )
+
+    except Exception as e:
+        await update.effective_message.reply_text(
+            text=f"❌ 查询文件失败: {str(e)}",
+            parse_mode='html'
+        )
+
+
+async def qas_delete_cloud_files_confirm_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """确认删除云盘文件"""
+    query = update.callback_query
+    await query.answer()
+    task_index = int(query.data.split(":")[1])
+
+    # 获取QAS配置
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+
+    # 获取任务数据
+    api_token = get_decrypted_api_token(qas_config)
+    qas = QuarkAutoDownload(api_token=api_token)
+    data = await qas.data(host=qas_config.host)
+    task = data['tasklist'][task_index]
+    save_path = task.get('savepath')
+
+    await update.effective_message.reply_text(
+        text=f"正在删除 <b>{save_path}</b> 下的文件...",
+        parse_mode='html'
+    )
+
+    # 获取云盘文件并删除
+    quark_cookies = await get_user_quark_cookies(user)
+    quark = Quark(cookies=quark_cookies)
+
+    try:
+        path_file_map = await quark.get_path_file_map(paths=[save_path])
+        path_files = await quark.get_quark_clouddrive_files(pdir_fid=path_file_map[save_path]['fid'])
+
+        # 收集要删除的文件fid
+        delete_files_fid = [f['fid'] for f in path_files if not f['dir']]
+
+        if delete_files_fid:
+            await quark.delete_files(delete_files_fid)
+            await update.effective_message.reply_text(
+                text=f"✅ 成功删除 <b>{save_path}</b> 下的 {len(delete_files_fid)} 个文件",
+                parse_mode='html'
+            )
+        else:
+            await update.effective_message.reply_text(
+                text=f"📁 路径 <b>{save_path}</b> 下没有文件",
+                parse_mode='html'
+            )
+    except Exception as e:
+        await update.effective_message.reply_text(
+            text=f"❌ 删除文件失败: {str(e)}",
+            parse_mode='html'
+        )
+
+
+async def qas_delete_cloud_files_cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """取消删除云盘文件"""
+    query = update.callback_query
+    await query.answer()
+    await update.effective_message.reply_text(
+        text="❌ 已取消删除操作"
+    )
 
 
 @command(name='qas_view_task_regex', description="QAS 查看任务正则匹配效果", args="{task id}")
@@ -2578,5 +2706,17 @@ handlers = [
     CallbackQueryHandler(
             depends(allowed_roles=get_allow_roles_command_map().get('qas_run_script'))(qas_view_task_regex_handler),
             pattern=r"^qas_view_task_regex:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_tag_start_file'))(qas_delete_cloud_files_handler),
+            pattern=r"^qas_delete_cloud_files:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_tag_start_file'))(qas_delete_cloud_files_confirm_handler),
+            pattern=r"^qas_delete_cloud_files_confirm:.*$"
+    ),
+    CallbackQueryHandler(
+            depends(allowed_roles=get_allow_roles_command_map().get('qas_tag_start_file'))(qas_delete_cloud_files_cancel_handler),
+            pattern=r"^qas_delete_cloud_files_cancel:.*$"
     )
 ]

@@ -27,7 +27,7 @@ from api import emby
 from api import ai_config
 from api import user_config
 
-from utils.job import tag_done_jobs
+from utils.job import tag_done_jobs, check_quark_cookies_validity
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -183,6 +183,12 @@ async def post_init(app):
         tag_done_jobs,
         trigger=IntervalTrigger(minutes=1),
         id="tag_done_jobs",
+        replace_existing=True
+    )
+    app.bot_data['async_scheduler'].add_job(
+        check_quark_cookies_validity,
+        trigger=IntervalTrigger(hours=6),
+        id="check_quark_cookies_validity",
         replace_existing=True
     )
 
