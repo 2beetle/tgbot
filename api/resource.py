@@ -19,6 +19,13 @@ from utils.quark import Quark
 logger = logging.getLogger(__name__)
 
 
+def _get_pansou(context: ContextTypes.DEFAULT_TYPE) -> PanSou:
+    """复用 PanSou 实例，避免每次冷启动新建连接"""
+    if 'pansou' not in context.bot_data:
+        context.bot_data['pansou'] = PanSou()
+    return context.bot_data['pansou']
+
+
 @command(name='search_media_resource', description="搜索资源", args="{resource name}")
 async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     async def cs_task(search_content: str):
@@ -27,7 +34,7 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         return data.get('data') or []
 
     async def ps_task(search_content: str):
-        p = PanSou()
+        p = _get_pansou(context)
         data = await p.search(search_content)
         if data is None:
             return {'merged_by_type': {}}
@@ -35,6 +42,7 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
 
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少资源名称")
+        return
     search_content = context.args[0]
 
     # 获取用户配置的常用云盘类型
@@ -43,7 +51,7 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(f"用户 {user.username} 配置的常用云盘: {preferred_clouds}")
 
     cloud_saver = context.bot_data['cloud_saver']
-    p = PanSou()
+    p = _get_pansou(context)
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -53,8 +61,17 @@ async def search_media_resource(update: Update, context: ContextTypes.DEFAULT_TY
 
     cs_result, ps_result = await asyncio.gather(
         cs_task(search_content),
-        ps_task(search_content)
+        ps_task(search_content),
+        return_exceptions=True
     )
+
+    # 单个源失败不影响整体
+    if isinstance(cs_result, Exception):
+        logger.error(f"cloud_saver 搜索失败: {cs_result}")
+        cs_result = []
+    if isinstance(ps_result, Exception):
+        logger.error(f"pansou 搜索失败: {ps_result}")
+        ps_result = {'merged_by_type': {}}
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
