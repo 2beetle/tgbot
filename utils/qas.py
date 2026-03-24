@@ -292,6 +292,60 @@ class QuarkAutoDownload:
             result.append(paragraph)
         return result
 
+    async def ai_recommend_folder(self, fid_files: dict, session, user_id) -> str | None:
+        """AI 分析各目录及其文件，推荐包含最新集视频文件的文件夹，返回推荐的 fid"""
+        # 构建目录摘要
+        folders_info = {}
+        for key, files in fid_files.items():
+            if key == 'root__0':
+                continue
+            folder_name = key.split('__')[0]
+            fid = key.split('__')[1]
+            file_names = [f['file_name'] for f in files if not f.get('dir')]
+            folders_info[fid] = {
+                'folder_name': folder_name,
+                'file_count': len(file_names),
+                'files': file_names[:30],  # 最多取30个文件名避免 prompt 过长
+            }
+
+        if not folders_info:
+            return None
+
+        prompt = f"""以下是一个夸克网盘分享链接下的各个文件夹及其包含的文件列表：
+{json.dumps(folders_info, ensure_ascii=False, indent=2)}
+
+请分析各文件夹的内容，找出最可能包含最新集视频文件的文件夹。判断依据（按优先级排序）：
+1. 文件夹名称中的季数编号（如 S01、Season 1、第一季等），季数最大的文件夹优先
+2. 文件名中的集数编号（如 E01、EP01、第01集等），集数最大的文件所在文件夹优先
+3. 文件名中包含高清标识（如 4K、2160p、1080p）的文件夹优先
+
+只返回JSON格式结果：{{"recommended_fid": "推荐文件夹的fid", "reason": "推荐原因（简短）"}}"""
+
+        try:
+            ai_result = await openapi_chat(
+                role="你是一个影视资源分析专家，善于从文件列表中判断哪个文件夹包含最新最全的视频资源",
+                prompt=prompt,
+                session=session,
+                user_id=user_id
+            )
+            if not ai_result:
+                return None
+
+            ai_result = ai_result.strip()
+            if ai_result.startswith("```json"):
+                ai_result = ai_result[7:]
+            if ai_result.endswith("```"):
+                ai_result = ai_result[:-3]
+
+            result = json.loads(ai_result)
+            recommended_fid = result.get('recommended_fid')
+            reason = result.get('reason', '')
+            logger.info(f"AI 推荐文件夹: fid={recommended_fid}, 原因: {reason}")
+            return recommended_fid, reason
+        except Exception as e:
+            logger.error(f"AI 推荐文件夹失败: {e}")
+            return None
+
     async def ai_generate_replace(self, url: str, session, user_id, prompt) -> dict:
         quark_id, stoken, pdir_fid = await self.get_quark_id_stoken_pdir_fid(url=url)
         dir_details = await self.get_quark_dir_detail(quark_id, stoken, pdir_fid, include_dir=False)
