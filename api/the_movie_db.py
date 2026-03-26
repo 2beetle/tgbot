@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from sqlalchemy.orm import Session
@@ -113,19 +114,19 @@ async def tmdb_search_tv(update: Update, context: ContextTypes.DEFAULT_TYPE, ses
 
     tv = TV()
     genre = Genre()
-    genre_tv_data = genre.tv_list()
+    genre_tv_data = await asyncio.to_thread(genre.tv_list)
     genre_mapping = {genre['id']: genre['name'] for genre in genre_tv_data['genres']}
     if len(context.args) == 0:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="缺少剧名参数")
     search_content = context.args[0]
     page = context.args[1] if len(context.args) > 1 else 1
-    search = tv.search(search_content, page=page)
+    search = await asyncio.to_thread(tv.search, search_content, page)
 
     logger.info(f"TMDB search tv: {search_content} page: {page}")
     logger.info(f"total_pages: {search.get('total_pages')}")
 
     for index, res in enumerate(search.get('results', [])):
-        detail = tv.details(res.get('id'))
+        detail = await asyncio.to_thread(tv.details, res.get('id'))
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
         message = await format_tmdb_tv_search(res, genre_mapping, detail)
@@ -178,7 +179,7 @@ async def tmdb_search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     movie = Movie()
     genre = Genre()
-    genre_movie_data = genre.movie_list()
+    genre_movie_data = await asyncio.to_thread(genre.movie_list)
     genre_mapping = {genre['id']: genre['name'] for genre in genre_movie_data['genres']}
 
     if len(context.args) == 0:
@@ -186,13 +187,13 @@ async def tmdb_search_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     search_content = context.args[0]
     page = context.args[1] if len(context.args) > 1 else 1
 
-    search = movie.search(search_content)
+    search = await asyncio.to_thread(movie.search, search_content)
 
     logger.info(f"TMDB search movie: {search_content} page: {page}")
     logger.info(f"total_pages: {search.get('total_pages')}")
 
     for index, res in enumerate(search.get('results', [])):
-        detail = movie.details(res.get('id'))
+        detail = await asyncio.to_thread(movie.details, res.get('id'))
         poster_path = detail.get('poster_path')
         photo_url = f"{poster_base_url}{poster_path}"
         message = await format_tmdb_movie_search(res, genre_mapping)

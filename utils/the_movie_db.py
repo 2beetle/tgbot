@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from tmdbv3api import TMDb, TV, Genre, Movie
@@ -16,7 +17,7 @@ class TheMovieDB:
 
     async def search_tv(self, tv_name, count=10):
         tv = TV()
-        search = tv.search(tv_name, page=1)
+        search = await asyncio.to_thread(tv.search, tv_name, 1)
 
         if search.get("total_results") == 0:
             return []
@@ -28,7 +29,7 @@ class TheMovieDB:
         for index, res in enumerate(search):
             if len(results) >= count:
                 break
-            detail = tv.details(res.get('id'))
+            detail = await asyncio.to_thread(tv.details, res.get('id'))
             poster_path = detail.get('poster_path')
             photo_url = f"{self.poster_base_url}{poster_path}"
             results.append({
@@ -40,7 +41,7 @@ class TheMovieDB:
 
     async def search_movie(self, movie_name, count=10):
         movie = Movie()
-        search = movie.search(movie_name, page=1)
+        search = await asyncio.to_thread(movie.search, movie_name, 1)
 
         if search.get("total_results") == 0:
             return []
@@ -52,7 +53,7 @@ class TheMovieDB:
         for index, res in enumerate(search):
             if len(results) >= count:
                 break
-            detail = movie.details(res.get('id'))
+            detail = await asyncio.to_thread(movie.details, res.get('id'))
             poster_path = detail.get('poster_path')
             photo_url = f"{self.poster_base_url}{poster_path}"
             results.append({
