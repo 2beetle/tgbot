@@ -217,6 +217,7 @@ if __name__ == '__main__':
         .token(TG_BOT_TOKEN)\
         .post_init(post_init)\
         .post_shutdown(post_shutdown)\
+        .concurrent_updates(True)\
         .build()
 
     application.bot_data['db_session_local'] = init.session_local
