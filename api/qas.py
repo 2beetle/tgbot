@@ -470,14 +470,22 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
         await update.message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
     quark_share_url = context.args[0]
     task_name = context.args[1]
-    if not quark_share_url.endswith('/'):
-        quark_share_url += '/'
+
+    # 分离 query 参数（如 pwd），避免末尾补 / 时破坏参数
+    parsed_url = re.split(r'(\?.*)', quark_share_url, maxsplit=1)
+    base_url = parsed_url[0]
+    query_string = parsed_url[1] if len(parsed_url) > 1 else ''
+
+    if not base_url.endswith('/'):
+        base_url += '/'
 
     # 提取链接根路径
     pattern = r"(https://pan\.quark\.cn/s/[^#]+#/list/share/)"
-    match = re.search(pattern, quark_share_url)
+    match = re.search(pattern, base_url)
     if match:
-        quark_share_url = match.group(1)
+        base_url = match.group(1)
+
+    quark_share_url = base_url + query_string
 
     context.user_data.update({
         'qas_add_task': {
