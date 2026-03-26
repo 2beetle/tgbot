@@ -47,6 +47,8 @@ QAS_ADD_TASK_EXTRA_SAVE_PATH_SET, QAS_ADD_TASK_PATTERN_SET, QAS_ADD_TASK_PATTERN
 QAS_TASK_UPDATE_IF_DEFAULT_URL_SET, QAS_TASK_UPDATE_SELECT_NEW_URL_SET, QAS_TASK_UPDATE_SELECT_SHARE_URL_SET, QAS_TASK_UPDATE_PATTERN_SET, QAS_TASK_UPDATE_REPLACE_SET, QAS_TASK_UPDATE_ARIA2_SET = range(6)
 QAS_TASK_UPDATE_FIELD_SELECT, QAS_TASK_UPDATE_SHARE_URL, QAS_TASK_UPDATE_SAVEPATH, QAS_TASK_UPDATE_PATTERN, QAS_TASK_UPDATE_PATTERN_GENERATE, QAS_TASK_UPDATE_REPLACE_GENERATE, QAS_TASK_UPDATE_REPLACE, QAS_TASK_UPDATE_ARIA2, QAS_TASK_UPDATE_IGNORE_EXTENSION = range(6, 15)
 
+QAS_FIX_LINK_INPUT_URL, QAS_FIX_LINK_SELECT_URL, QAS_FIX_LINK_CONFIRM = range(15, 18)
+
 async def host_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
     query = update.callback_query
     await query.answer()
@@ -1013,6 +1015,9 @@ async def qas_add_task_finish(update: Update, context: ContextTypes.DEFAULT_TYPE
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
                     ],
                     [
@@ -1149,6 +1154,9 @@ async def qas_list_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sess
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
                     ],
                     [
+                        InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{index}")
+                    ],
+                    [
                         InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
                     ],
                     [
@@ -1222,6 +1230,9 @@ async def qas_list_err_task(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     ],
                     [
                         InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{index}")
+                    ],
+                    [
+                        InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{index}")
                     ],
                     [
                         InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
@@ -1948,6 +1959,9 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
                     InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{task_id}")
                 ],
                 [
+                    InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{task_id}")
+                ],
+                [
                     InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{task_id}")
                 ],
                 [
@@ -1963,6 +1977,281 @@ async def qas_task_update_finish(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data.pop("qas_update_task", None)
     context.user_data.pop("qas_update_task_edit_data", None)
 
+    return ConversationHandler.END
+
+
+# ==================== 修复资源链接 ====================
+
+async def qas_fix_link_start(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """修复资源链接入口"""
+    query = update.callback_query
+    await query.answer(text="修复资源链接")
+    task_id = int(query.data.split(':')[1])
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    if not qas_config:
+        await update.effective_message.reply_text("尚未添加 QAS 配置，请使用 /upsert_configuration 命令进行配置")
+        return ConversationHandler.END
+
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        return ConversationHandler.END
+
+    qas = QuarkAutoDownload(api_token=api_token)
+    data = await qas.data(host=qas_config.host)
+    task_info = data.get("tasklist", [])[task_id]
+
+    context.user_data['qas_fix_link'] = {
+        'task_id': task_id,
+        'original_task': task_info.copy(),
+    }
+
+    await update.effective_message.reply_text(
+        f"🔧 <b>修复资源链接</b>\n\n"
+        f"📌 <b>任务名称：</b>{task_info.get('taskname')}\n"
+        f"🔗 <b>当前链接：</b><a href=\"{task_info.get('shareurl')}\">点我查看</a>\n\n"
+        f"请输入新的分享链接：",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("❌ 取消", callback_data="cancel_qas_fix_link")
+        ]]),
+        parse_mode="html"
+    )
+    return QAS_FIX_LINK_INPUT_URL
+
+
+async def qas_fix_link_url_input(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理新链接输入"""
+    if not update.message:
+        return
+
+    await update.message.reply_text(text='解析分享链接中，请稍后')
+
+    quark_share_url = update.message.text.strip()
+    if not quark_share_url.endswith('/'):
+        quark_share_url += '/'
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.message.reply_text("无法解密QAS API令牌，请重新配置")
+        return ConversationHandler.END
+
+    qas = QuarkAutoDownload(api_token=api_token)
+    fid_files = await qas.get_fid_files(quark_share_url)
+    if not fid_files:
+        await update.message.reply_text(
+            "链接状态异常，请重新输入：",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ 取消", callback_data="cancel_qas_fix_link")
+            ]])
+        )
+        return QAS_FIX_LINK_INPUT_URL
+
+    tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
+    if tree_paragraphs:
+        # AI 分析推荐包含最新集的文件夹
+        recommended_fid = None
+        recommend_reason = ''
+        try:
+            result = await qas.ai_recommend_folder(fid_files, session, user.id)
+            if result:
+                recommended_fid, recommend_reason = result
+        except Exception as e:
+            logger.warning(f"AI 推荐文件夹失败，不影响正常流程: {e}")
+
+        for _ in tree_paragraphs:
+            file_name = _.split('\n')[0].split('__')[0]
+            fid = _.split('\n')[0].split('__')[1]
+            url = quark_share_url + fid
+            tmp_url_id = get_random_letter_number_id()
+            context.user_data[tmp_url_id] = url
+
+            # 推荐标记
+            is_recommended = recommended_fid and fid == recommended_fid
+            recommend_label = f"⭐ 推荐选择 {file_name}" if is_recommended else f"选择 {file_name}"
+            text = _
+            if is_recommended and recommend_reason:
+                text += f"\n\n⭐ <b>AI 推荐</b>：{recommend_reason}"
+
+            await update.message.reply_text(
+                text=text,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(recommend_label, callback_data=f"qas_fix_link_select:{tmp_url_id}")
+                ]]),
+                parse_mode="html"
+            )
+        return QAS_FIX_LINK_SELECT_URL
+
+    # 无子目录，直接用当前链接进行 AI 生成
+    context.user_data['qas_fix_link']['new_shareurl'] = quark_share_url
+    return await _qas_fix_link_ai_generate(update, context, session, user, qas, quark_share_url)
+
+
+async def qas_fix_link_url_select(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """处理子目录选择"""
+    query = update.callback_query
+    await query.answer()
+    tmp_url_id = query.data.split(':')[1]
+    selected_url = context.user_data.get(tmp_url_id)
+
+    if not selected_url:
+        await update.effective_message.reply_text("链接已过期，请重新操作")
+        return ConversationHandler.END
+
+    context.user_data['qas_fix_link']['new_shareurl'] = selected_url
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    qas = QuarkAutoDownload(api_token=api_token)
+
+    return await _qas_fix_link_ai_generate(update, context, session, user, qas, selected_url)
+
+
+async def _qas_fix_link_ai_generate(update, context, session, user, qas, share_url):
+    """调用 AI 生成 pattern/replace 并展示确认界面"""
+    await update.effective_message.reply_text("🤖 AI 正在生成正则表达式，请稍等...")
+
+    try:
+        ai_params = await qas.ai_generate_params(
+            url=share_url,
+            session=session,
+            user_id=user.id,
+            prompt="提取视频文件"
+        )
+        context.user_data['qas_fix_link']['ai_params'] = ai_params
+
+        original_task = context.user_data['qas_fix_link']['original_task']
+        await update.effective_message.reply_text(
+            f"🤖 <b>AI 生成结果：</b>\n\n"
+            f"🎯 <b>Pattern：</b><code>{html.escape(ai_params.get('pattern', ''))}</code>\n"
+            f"🔄 <b>Replace：</b><code>{html.escape(ai_params.get('replace', ''))}</code>\n\n"
+            f"<b>原任务信息：</b>\n"
+            f"📌 <b>任务名称：</b>{original_task.get('taskname')}\n"
+            f"📁 <b>保存路径：</b><code>{original_task.get('savepath')}</code>\n"
+            f"🔗 <b>新链接：</b><a href=\"{context.user_data['qas_fix_link']['new_shareurl']}\">点我查看</a>\n\n"
+            f"确认后将更新链接、Pattern、Replace 并清空开始文件标记，其他配置不变。",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ 确认修复", callback_data="qas_fix_link_confirm")],
+                [InlineKeyboardButton("🔄 重新生成", callback_data="qas_fix_link_retry")],
+                [InlineKeyboardButton("❌ 取消", callback_data="cancel_qas_fix_link")]
+            ]),
+            parse_mode="html"
+        )
+        return QAS_FIX_LINK_CONFIRM
+
+    except Exception as e:
+        logger.error(f"AI 生成正则失败: {e}")
+        await update.effective_message.reply_text(
+            f"❌ AI 生成失败：{str(e)}\n\n请重试或取消操作。",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 重试", callback_data="qas_fix_link_retry")],
+                [InlineKeyboardButton("❌ 取消", callback_data="cancel_qas_fix_link")]
+            ])
+        )
+        return QAS_FIX_LINK_CONFIRM
+
+
+async def qas_fix_link_retry(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """重新生成 AI 参数"""
+    query = update.callback_query
+    await query.answer()
+
+    fix_data = context.user_data.get('qas_fix_link', {})
+    share_url = fix_data.get('new_shareurl')
+    if not share_url:
+        await update.effective_message.reply_text("操作已过期，请重新开始")
+        return ConversationHandler.END
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    qas = QuarkAutoDownload(api_token=api_token)
+
+    return await _qas_fix_link_ai_generate(update, context, session, user, qas, share_url)
+
+
+async def qas_fix_link_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """确认修复，执行更新"""
+    query = update.callback_query
+    await query.answer()
+
+    fix_data = context.user_data.get('qas_fix_link', {})
+    task_id = fix_data.get('task_id')
+    new_shareurl = fix_data.get('new_shareurl')
+    ai_params = fix_data.get('ai_params', {})
+
+    if not all([task_id is not None, new_shareurl, ai_params]):
+        await update.effective_message.reply_text("操作数据不完整，请重新开始")
+        context.user_data.pop('qas_fix_link', None)
+        return ConversationHandler.END
+
+    qas_config = session.query(QuarkAutoDownloadConfig).filter(
+        QuarkAutoDownloadConfig.user_id == user.id
+    ).first()
+    api_token = get_decrypted_api_token(qas_config)
+    if not api_token:
+        await update.effective_message.reply_text("无法解密QAS API令牌，请重新配置")
+        context.user_data.pop('qas_fix_link', None)
+        return ConversationHandler.END
+
+    qas = QuarkAutoDownload(api_token=api_token)
+    data = await qas.data(host=qas_config.host)
+
+    # 更新任务
+    task = data['tasklist'][task_id]
+    task['shareurl'] = new_shareurl
+    task['pattern'] = ai_params.get('pattern', '')
+    task['replace'] = ai_params.get('replace', '')
+    task['startfid'] = ''
+
+    # 清除临时字段
+    for key in ['id', 'ai_params', 'shareurl_ban']:
+        task.pop(key, None)
+
+    success = await qas.update(host=qas_config.host, data=data)
+
+    if success:
+        updated_data = await qas.data(host=qas_config.host)
+        updated_task = updated_data['tasklist'][task_id]
+
+        message = (
+            f"✅ <b>资源链接修复成功</b>\n\n"
+            f"📌 <b>任务名称</b>：{updated_task['taskname']}\n"
+            f"📁 <b>保存路径</b>：<code>{updated_task['savepath']}</code>\n"
+            f"🔗 <b>分享链接</b>：<a href=\"{updated_task['shareurl']}\">点我打开</a>\n"
+            f"🎯 <b>匹配规则</b>：<code>{html.escape(updated_task['pattern'])}</code>\n"
+            f"🔁 <b>替换模板</b>：<code>{html.escape(updated_task['replace'])}</code>\n\n"
+            f"📦 <b>扩展设置</b>：\n"
+            f"- 🧲 <b>Aria2 自动下载</b>：{'✅ 开启' if updated_task.get('addition', {}).get('aria2', {}).get('auto_download') else '❌ 关闭'}\n"
+            f"- 📄 <b>忽略后缀名</b>：{'✅ 开启' if updated_task.get('ignore_extension') else '❌ 关闭'}\n"
+            f"- 🧬 <b>Emby 匹配</b>：{'✅ 开启' if updated_task.get('addition', {}).get('emby', {}).get('try_match') else '❌ 关闭'}\n\n"
+            f"🌐 <a href=\"{qas_config.host}\"><b>你的 QAS 服务</b></a>"
+        )
+        await update.effective_message.reply_text(
+            text=message,
+            parse_mode="html",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"▶️ 运行此任务", callback_data=f"qas_run_script:{task_id}")],
+                [InlineKeyboardButton(f"📁 标记开始文件", callback_data=f"qas_tag_start_file:{task_id}")],
+                [InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{task_id}")],
+                [InlineKeyboardButton(f"👀 查看任务正则匹配效果", callback_data=f"qas_view_task_regex:{task_id}")],
+                [InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{task_id}")],
+                [InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{task_id}")],
+                [InlineKeyboardButton(f"🗑 删除此任务", callback_data=f"qas_delete_task:{task_id}")]
+            ])
+        )
+    else:
+        await update.effective_message.reply_text("❌ 修复失败，请检查配置后重试")
+
+    context.user_data.pop('qas_fix_link', None)
     return ConversationHandler.END
 
 
@@ -2415,6 +2704,9 @@ async def qas_view_task_regex(update: Update, context: ContextTypes.DEFAULT_TYPE
                 InlineKeyboardButton(f"🗑️ 删除对应路径云盘文件", callback_data=f"qas_delete_cloud_files:{index}")
             ],
             [
+                InlineKeyboardButton(f"🔧 修复资源链接", callback_data=f"qas_fix_link:{index}")
+            ],
+            [
                 InlineKeyboardButton(f"🛠️ 更新此任务", callback_data=f"qas_update_task:{index}")
             ],
             [
@@ -2704,6 +2996,42 @@ handlers = [
         },
         fallbacks=[
             CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_qas_update_task$")
+        ],
+    ),
+    # fix resource link (修复资源链接)
+    ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(
+                depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_fix_link_start),
+                pattern=r"^qas_fix_link:.*$"
+            )
+        ],
+        states={
+            QAS_FIX_LINK_INPUT_URL: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_fix_link_url_input)
+                )
+            ],
+            QAS_FIX_LINK_SELECT_URL: [
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_fix_link_url_select),
+                    pattern=r"^qas_fix_link_select:.*$"
+                )
+            ],
+            QAS_FIX_LINK_CONFIRM: [
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_fix_link_confirm),
+                    pattern=r"^qas_fix_link_confirm$"
+                ),
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('qas_add_task'))(qas_fix_link_retry),
+                    pattern=r"^qas_fix_link_retry$"
+                )
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_conversation_callback, pattern="^cancel_qas_fix_link$")
         ],
     ),
     CallbackQueryHandler(
