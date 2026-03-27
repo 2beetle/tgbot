@@ -496,7 +496,8 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
             "pattern": qas_config.pattern,
             "replace": qas_config.replace,
             "is_multi_seasons": False,
-            "quark_share_url_origin": quark_share_url,
+            "quark_share_url_origin": base_url,
+            "quark_share_url_query": query_string,
             "ai_generate_pattern_texts": {
                 'filename_with_4k': '文件名中带 4K 的文件'
             }
@@ -516,7 +517,7 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
     for _ in tree_paragraphs:
         file_name = _.split('\n')[0].split('__')[0]
         fid = _.split('\n')[0].split('__')[1]
-        url = quark_share_url + fid
+        url = base_url + fid + query_string
         tmp_url_id = get_random_letter_number_id()
         context.user_data['qas_add_task']['shareurl'][tmp_url_id] = url
         await update.message.reply_text(
@@ -1060,7 +1061,7 @@ Ai识别季数完成，识别结果为：
                 qas_instance=qas,
                 qas_config_instance=qas_config,
                 task_name=context.user_data['qas_add_task']['taskname'] + f" ({season})",
-                share_url=context.user_data['qas_add_task']['quark_share_url_origin'] + fid,
+                share_url=context.user_data['qas_add_task']['quark_share_url_origin'] + fid + context.user_data['qas_add_task']['quark_share_url_query'],
                 save_path=os.path.join(context.user_data['qas_add_task']['savepath'], season),
                 pattern=context.user_data['qas_add_task']['pattern'],
                 replace=replace,
@@ -1426,8 +1427,16 @@ async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DE
     await update.message.reply_text(text='解析分享链接中，请稍后')
 
     quark_share_url = update.message.text
-    if not quark_share_url.endswith('/'):
-        quark_share_url += '/'
+
+    # 分离 query 参数（如 pwd），避免末尾补 / 时破坏参数
+    parsed_url = re.split(r'(\?.*)', quark_share_url, maxsplit=1)
+    base_url = parsed_url[0]
+    query_string = parsed_url[1] if len(parsed_url) > 1 else ''
+
+    if not base_url.endswith('/'):
+        base_url += '/'
+
+    quark_share_url = base_url + query_string
 
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
@@ -1447,7 +1456,7 @@ async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DE
     for _ in tree_paragraphs:
         file_name = _.split('\n')[0].split('__')[0]
         fid = _.split('\n')[0].split('__')[1]
-        url = quark_share_url + fid
+        url = base_url + fid + query_string
         tmp_url_id = get_random_letter_number_id()
         context.user_data[tmp_url_id] = url
         await update.message.reply_text(
@@ -2030,8 +2039,16 @@ async def qas_fix_link_url_input(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text(text='解析分享链接中，请稍后')
 
     quark_share_url = update.message.text.strip()
-    if not quark_share_url.endswith('/'):
-        quark_share_url += '/'
+
+    # 分离 query 参数（如 pwd），避免末尾补 / 时破坏参数
+    parsed_url = re.split(r'(\?.*)', quark_share_url, maxsplit=1)
+    base_url = parsed_url[0]
+    query_string = parsed_url[1] if len(parsed_url) > 1 else ''
+
+    if not base_url.endswith('/'):
+        base_url += '/'
+
+    quark_share_url = base_url + query_string
 
     qas_config = session.query(QuarkAutoDownloadConfig).filter(
         QuarkAutoDownloadConfig.user_id == user.id
@@ -2067,7 +2084,7 @@ async def qas_fix_link_url_input(update: Update, context: ContextTypes.DEFAULT_T
         for _ in tree_paragraphs:
             file_name = _.split('\n')[0].split('__')[0]
             fid = _.split('\n')[0].split('__')[1]
-            url = quark_share_url + fid
+            url = base_url + fid + query_string
             tmp_url_id = get_random_letter_number_id()
             context.user_data[tmp_url_id] = url
 
