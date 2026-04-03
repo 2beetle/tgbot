@@ -514,19 +514,38 @@ async def qas_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE, sessi
     qas = QuarkAutoDownload(api_token=api_token)
     fid_files = await qas.get_fid_files(quark_share_url, True)
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
+
+    # AI 分析推荐包含最新集的文件夹
+    recommended_fid = None
+    recommend_reason = ''
+    try:
+        result = await qas.ai_recommend_folder(fid_files, session, user.id)
+        if result:
+            recommended_fid, recommend_reason = result
+    except Exception as e:
+        logger.warning(f"AI 推荐文件夹失败，不影响正常流程: {e}")
+
     for _ in tree_paragraphs:
         file_name = _.split('\n')[0].split('__')[0]
         fid = _.split('\n')[0].split('__')[1]
         url = base_url + fid + query_string
         tmp_url_id = get_random_letter_number_id()
         context.user_data['qas_add_task']['shareurl'][tmp_url_id] = url
+
+        is_recommended = recommended_fid and fid == recommended_fid
+        recommend_label = f"⭐ 推荐选择 {file_name}" if is_recommended else f"选择 {file_name}"
+        text = _
+        if is_recommended and recommend_reason:
+            text += f"\n\n⭐ <b>AI 推荐</b>：{recommend_reason}"
+
         await update.message.reply_text(
-            text=_,
+            text=text,
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton(f"选择 {file_name}", callback_data=f"qas_add_task_state:{tmp_url_id}")
+                    InlineKeyboardButton(recommend_label, callback_data=f"qas_add_task_state:{tmp_url_id}")
                 ]
-            ])
+            ]),
+            parse_mode="html"
         )
 
 
@@ -1453,17 +1472,36 @@ async def qas_task_update_share_url_set(update: Update, context: ContextTypes.DE
         return
 
     tree_paragraphs = await qas.get_tree_paragraphs(fid_files)
+
+    # AI 分析推荐包含最新集的文件夹
+    recommended_fid = None
+    recommend_reason = ''
+    try:
+        result = await qas.ai_recommend_folder(fid_files, session, user.id)
+        if result:
+            recommended_fid, recommend_reason = result
+    except Exception as e:
+        logger.warning(f"AI 推荐文件夹失败，不影响正常流程: {e}")
+
     for _ in tree_paragraphs:
         file_name = _.split('\n')[0].split('__')[0]
         fid = _.split('\n')[0].split('__')[1]
         url = base_url + fid + query_string
         tmp_url_id = get_random_letter_number_id()
         context.user_data[tmp_url_id] = url
+
+        is_recommended = recommended_fid and fid == recommended_fid
+        recommend_label = f"⭐ 推荐选择 {file_name}" if is_recommended else f"选择 {file_name}"
+        text = _
+        if is_recommended and recommend_reason:
+            text += f"\n\n⭐ <b>AI 推荐</b>：{recommend_reason}"
+
         await update.message.reply_text(
-            text=_,
+            text=text,
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton(f"选择 {file_name}", callback_data=f"qas_task_update_share_url_select:{tmp_url_id}")
-            ]])
+                InlineKeyboardButton(recommend_label, callback_data=f"qas_task_update_share_url_select:{tmp_url_id}")
+            ]]),
+            parse_mode="html"
         )
     return QAS_TASK_UPDATE_SHARE_URL
 
