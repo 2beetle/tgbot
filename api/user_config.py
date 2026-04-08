@@ -224,8 +224,10 @@ async def quark_cookies_select(update: Update, context: ContextTypes.DEFAULT_TYP
 
     buttons = [
         [InlineKeyboardButton(f"{status}", callback_data="update_quark_cookies")],
-        [InlineKeyboardButton("❌ 关闭", callback_data="cancel_quark_config_conversation")]
     ]
+    if has_cookies:
+        buttons.append([InlineKeyboardButton("🔍 检测有效性", callback_data="check_quark_cookies_validity")])
+    buttons.append([InlineKeyboardButton("❌ 关闭", callback_data="cancel_quark_config_conversation")])
 
     keyboard = InlineKeyboardMarkup(buttons)
 
@@ -302,6 +304,53 @@ async def quark_cookies_set(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     message += "<i>现在可以使用夸克网盘相关功能了</i>"
 
     await update.message.reply_text(message, parse_mode="HTML")
+
+    return ConversationHandler.END
+
+
+async def check_quark_cookies_manual(update: Update, context: ContextTypes.DEFAULT_TYPE, session: Session, user: User):
+    """手动检测夸克网盘 Cookies 有效性"""
+    import asyncio
+    query = update.callback_query
+    await query.answer()
+
+    quark_cookies = await get_user_quark_cookies(user)
+    if not quark_cookies:
+        await query.edit_message_text("❌ 未配置夸克网盘 Cookies", parse_mode="HTML")
+        return ConversationHandler.END
+
+    await query.edit_message_text("🔍 <b>正在检测夸克网盘 Cookies 有效性...</b>", parse_mode="HTML")
+
+    from utils.quark import Quark
+    quark = Quark(cookies=quark_cookies)
+
+    max_retries = 3
+    account_info = None
+    for attempt in range(1, max_retries + 1):
+        account_info = await quark.get_account_info()
+        if account_info:
+            break
+        if attempt < max_retries:
+            logger.warning(f"用户 {user.username} 手动检测夸克 Cookies 第 {attempt} 次失败，2秒后重试")
+            await asyncio.sleep(2)
+
+    if account_info:
+        message = "✅ <b>夸克网盘 Cookies 有效</b>\n\n"
+        nickname = account_info.get("nickname", "")
+        if nickname:
+            message += f"<b>账号昵称:</b> {nickname}"
+    else:
+        message = (
+            "❌ <b>夸克网盘 Cookies 已失效</b>\n\n"
+            f"重试 {max_retries} 次均失败，请重新配置 Cookies。\n"
+            "使用 /upsert_configuration 命令更新「夸克网盘」Cookies。"
+        )
+
+    try:
+        await query.edit_message_text(message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error editing message: {e}")
+        await update.effective_message.reply_text(message, parse_mode="HTML")
 
     return ConversationHandler.END
 
@@ -411,6 +460,10 @@ handlers = [
                 CallbackQueryHandler(
                     depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(update_quark_cookies),
                     pattern=r"^update_quark_cookies$"
+                ),
+                CallbackQueryHandler(
+                    depends(allowed_roles=get_allow_roles_command_map().get('upsert_configuration'))(check_quark_cookies_manual),
+                    pattern=r"^check_quark_cookies_validity$"
                 ),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,

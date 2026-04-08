@@ -59,6 +59,7 @@ async def tag_done_jobs():
 
 async def check_quark_cookies_validity():
     """检查所有用户的夸克网盘 Cookies 是否有效"""
+    import asyncio
     session_local = sessionmaker(autocommit=False, autoflush=False, bind=model_engine)
     with session_local() as session:
         # 查询所有配置了夸克 cookies 的用户
@@ -79,14 +80,23 @@ async def check_quark_cookies_validity():
                 if not quark_cookies:
                     continue
 
-                # 检查 cookies 是否有效
+                # 检查 cookies 是否有效，重试3次防止偶然失败
                 from utils.quark import Quark
                 quark = Quark(cookies=quark_cookies)
-                account_info = await quark.get_account_info()
+
+                max_retries = 3
+                account_info = None
+                for attempt in range(1, max_retries + 1):
+                    account_info = await quark.get_account_info()
+                    if account_info:
+                        break
+                    if attempt < max_retries:
+                        logger.warning(f"用户 {user.username} (ID: {user.id}) 夸克 Cookies 检测第 {attempt} 次失败，{2}秒后重试")
+                        await asyncio.sleep(2)
 
                 if not account_info:
-                    # Cookies 已过期,发送通知
-                    logger.warning(f"用户 {user.username} (ID: {user.id}) 的夸克网盘 Cookies 已过期")
+                    # 3次都失败，Cookies 已过期，发送通知
+                    logger.warning(f"用户 {user.username} (ID: {user.id}) 的夸克网盘 Cookies 已过期（重试 {max_retries} 次均失败）")
 
                     message = (
                         "⚠️ <b>夸克网盘 Cookies 已过期</b>\n\n"
