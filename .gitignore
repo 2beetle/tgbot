@@ -1,6 +1,7 @@
 .venv
 .idea
 *.db
+__pycache__/
 
 # AI generated files
 CLAUDE.md

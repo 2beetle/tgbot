@@ -77,7 +77,7 @@ async def openapi_chat(role: str, prompt: str, host: str = None, api_key: str = 
     data = {
         "model": model,
         "messages": [
-            {"role": "system", "content": role},
+            {"role": "system", "content": role + "\n请以json格式输出结果。"},
             {"role": "user", "content": prompt}
         ],
         "temperature": 0,

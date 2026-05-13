@@ -391,6 +391,11 @@ Replace生成规则：
             session=session,
             user_id=user_id
         )
+        logger.info(f"AI正则分析响应: {ai_analysis}")
+
+        if not ai_analysis:
+            logger.warning(f"AI分析正则返回为空, prompt: {prompt}")
+            return None
 
         # 清理可能的非JSON内容
         ai_analysis = ai_analysis.strip()
@@ -448,6 +453,11 @@ Replace生成规则：
             session=session,
             user_id=user_id
         )
+        logger.info(f"AI正则分析响应: {ai_analysis}")
+
+        if not ai_analysis:
+            logger.warning(f"AI分析正则返回为空, prompt: {prompt}")
+            return None
 
         # 清理可能的非JSON内容
         ai_analysis = ai_analysis.strip()
@@ -534,6 +544,11 @@ Replace生成规则：
             session=session,
             user_id=user_id
         )
+        logger.info(f"AI季数分析响应: {ai_analysis}")
+
+        if not ai_analysis:
+            logger.warning(f"AI分析季数返回为空, prompt: {prompt}")
+            return dict(), dict()
 
         # 清理可能的非JSON内容
         ai_analysis = ai_analysis.strip()
